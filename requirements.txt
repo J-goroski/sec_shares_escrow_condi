@@ -1,0 +1,25 @@
+# SEC EDGAR pipeline — Python dependencies
+# Python 3.10+  (tested on 3.11.9)
+#
+#     pip install -r requirements.txt
+#
+# Only three packages are needed for the core methods under methods/.
+# Flask (for the optional viewer/) and Jupyter (for the notebook) are separate.
+
+# ── Core (methods/) ───────────────────────────────────────────────────────────
+pandas>=2.0          # every module returns/consumes DataFrames
+requests>=2.28       # all SEC HTTP access
+lxml>=5.0            # XBRL (etree) + HTML parsing; also backs pandas.read_html
+
+# ── Viewer only (viewer/app.py) ───────────────────────────────────────────────
+flask>=3.0           # the local two-pane filing viewer
+markupsafe>=2.1      # imported directly by the viewer (also a Flask dependency)
+
+# ── Notebook only (sec_filings_notebook.ipynb) ────────────────────────────────
+# Uncomment if you want to run the notebook outside an IDE that already
+# provides a Jupyter kernel (e.g. VS Code / JetBrains):
+# jupyter>=1.0
+# ipykernel>=6.0
+
+# Tested-with versions (2026-07): pandas 2.2.2, requests 2.32.3, lxml 6.0.2,
+# flask 3.0.3, markupsafe 3.0.3.
