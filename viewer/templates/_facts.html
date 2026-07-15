@@ -1,0 +1,64 @@
+{# Shared renderers for derived-fact payloads (icb / voting / adr). #}
+
+{% macro conf(c) -%}
+  {%- if c %}<span class="badge conf-{{ c }}">{{ c }}</span>{% endif -%}
+{%- endmacro %}
+
+{% macro status(s) -%}
+  {%- if s %}<span class="badge st-{{ s }}">{{ s }}</span>{% endif -%}
+{%- endmacro %}
+
+{% macro payload_table(kind, p) -%}
+  {%- if kind == 'icb' and p -%}
+    <table class="kv">
+      <tr><th>Industry</th><td>{{ p.industry or '—' }}</td></tr>
+      {% if p.supersector and p.supersector != p.industry %}
+        <tr><th>Supersector</th><td>{{ p.supersector }}</td></tr>{% endif %}
+      <tr><th>Sector</th><td>{{ p.sector or '—' }}
+          {% if p.sector_code %}<span class="prov">({{ p.sector_code }})</span>{% endif %}</td></tr>
+      {% if p.subsector %}
+        <tr><th>Subsector</th><td>{{ p.subsector }}
+            {% if p.subsector_code %}<span class="prov">({{ p.subsector_code }})</span>{% endif %}</td></tr>{% endif %}
+      {% if p.sic_desc %}
+        <tr><th>SEC SIC</th><td>{{ p.sic }} — {{ p.sic_desc }}
+            {% if p.sic_industry %}<span class="muted">(prior: {{ p.sic_industry }})</span>{% endif %}</td></tr>{% endif %}
+      {% if p.rationale %}<tr><th>Rationale</th><td class="muted">{{ p.rationale }}</td></tr>{% endif %}
+    </table>
+  {%- elif kind == 'voting' and p -%}
+    <table class="ledger">
+      <tr><th>Share class</th><th>Votes / share</th><th>Note</th><th></th></tr>
+      {% for r in p %}
+        {% set v = r.get('votes_per_share') %}
+        <tr>
+          <td><b>{{ r.get('class_label', '?') }}</b></td>
+          <td class="mono">{{ '%g' % v if v is not none else '—' }}</td>
+          <td class="muted">{{ r.get('note') or '' }}</td>
+          <td>{{ conf(r.get('confidence')) }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  {%- elif kind == 'adr' and p -%}
+    <table class="ledger">
+      <tr><th>Ratio</th><th>Underlying</th><th>Security title</th><th>Via</th><th></th></tr>
+      {% for r in p %}
+        <tr>
+          <td class="mono"><b>{{ r.get('ratio_display') or '—' }}</b></td>
+          <td>{{ r.get('underlying') or '' }}</td>
+          <td class="muted">{{ (r.get('security_title') or '')[:90] }}</td>
+          <td class="prov">{{ r.get('method') or '' }}</td>
+          <td>{{ conf(r.get('confidence')) }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  {%- else -%}
+    <span class="muted">no payload</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro provenance(row) -%}
+  <span class="prov">
+    {{ row.source_form }} {{ row.source_filing_date }}
+    · method {{ row.method or '?' }}{% if row.model %} · model {{ row.model }}{% endif %}
+    · derived {{ (row.updated_utc or row.created_utc or '')[:10] }}
+  </span>
+{%- endmacro %}

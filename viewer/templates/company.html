@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% import "_facts.html" as F %}
+{% block title %}{{ header.name }} — Research Desk{% endblock %}
+
+{% block head %}
+  {% if analysis_running %}<meta http-equiv="refresh" content="8">{% endif %}
+{% endblock %}
+
+{% block style %}
+<style>
+  .split { display:flex; height:calc(100vh - 52px); }
+  .left { width:46%; max-width:660px; min-width:380px; overflow-y:auto;
+          padding:1rem; border-right:1px solid var(--line); }
+  .right { flex:1; background:#fff; }
+  .right iframe { width:100%; height:100%; border:0; }
+  .company h1 { font-size:22px; margin:0 0 .3rem; }
+  .pill { display:inline-block; padding:.1rem .55rem; border-radius:999px;
+          font-size:12px; font-weight:700; background:var(--green-soft);
+          color:var(--green-ink); margin:0 .3rem .3rem 0; }
+  .meta { display:grid; grid-template-columns:auto 1fr; gap:.15rem .8rem;
+          font-size:13px; margin-top:.5rem; }
+  .meta div:nth-child(odd) { color:var(--muted); }
+  table.tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.tbl th { text-align:left; background:#f5f2e8; border-bottom:2px solid var(--line2);
+                 padding:.35rem .5rem; }
+  table.tbl td { border-bottom:1px solid var(--line); padding:.35rem .5rem; }
+  .filing { display:flex; align-items:center; gap:.6rem; padding:.5rem .6rem;
+            border:1px solid var(--line); border-radius:8px; margin-bottom:.45rem; }
+  .filing.sel { border-color:var(--green); background:var(--green-soft); }
+  .filing .form { font-weight:700; min-width:56px; }
+  .filing .dates { font-size:12px; color:var(--muted); flex:1; }
+  .filing .links { display:flex; gap:.5rem; font-size:12px; white-space:nowrap; }
+  .filing .view { padding:.25rem .6rem; border-radius:6px; background:var(--green);
+                  color:#fff; font-size:12px; font-weight:600; }
+  .filing .view:hover { text-decoration:none; opacity:.9; }
+  .xbrl-dot { width:7px; height:7px; border-radius:50%; background:#1d9e6f;
+              display:inline-block; }
+  .factset { border-top:1px solid var(--line); padding:.6rem 0; }
+  .factset:first-of-type { border-top:0; padding-top:0; }
+  .factset .head { display:flex; align-items:center; gap:.5rem; margin-bottom:.35rem; }
+  .running { background:var(--amber-soft); border:1px solid #e5d3a1; color:var(--amber);
+             padding:.55rem .9rem; border-radius:8px; margin-bottom:1rem; font-size:13px; }
+  details.ev summary { cursor:pointer; font-size:12px; color:var(--muted); }
+</style>
+{% endblock %}
+
+{% block body %}
+  <div class="split">
+    <div class="left">
+      {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% for cat, m in msgs %}
+          <div class="{{ 'err' if cat == 'error' else 'flash' }}">{{ m }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      {% if analysis_running %}
+        <div class="running">Analysis pipeline running for this company &mdash;
+          this page refreshes itself every few seconds.</div>
+      {% endif %}
+
+      <div class="card company">
+        <h1>{{ header.name }}</h1>
+        <div>
+          {% for t in header.tickers %}<span class="pill">{{ t }}</span>{% endfor %}
+          {% if not header.tickers %}<span class="muted">No ticker on file</span>{% endif %}
+        </div>
+        <div class="meta">
+          <div>CIK</div><div class="mono">{{ header.cik }}</div>
+          {% if header.exchanges %}<div>Exchange</div><div>{{ header.exchanges|join(', ') }}</div>{% endif %}
+          {% if header.sic %}<div>Industry (SIC)</div><div>{{ header.sic }}</div>{% endif %}
+          {% if header.category %}<div>Filer</div><div>{{ header.category }}</div>{% endif %}
+          {% if header.incorporation %}<div>Incorporated</div><div>{{ header.incorporation }}</div>{% endif %}
+          {% if header.fiscal_year_end %}<div>FY end</div><div>{{ header.fiscal_year_end }}</div>{% endif %}
+          {% if header.address %}<div>Address</div><div>{{ header.address }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="display:flex;align-items:center;gap:.6rem">Derived facts
+          <form action="/analyze/{{ cik }}" method="post" style="margin-left:auto">
+            <button class="btn small" type="submit"
+                    {% if analysis_running %}disabled{% endif %}>
+              {{ 'Running…' if analysis_running else
+                 ('Refresh analysis' if factsets else 'Run analysis') }}</button>
+          </form>
+        </h2>
+        {% if factsets %}
+          {% for f in factsets %}
+            <div class="factset">
+              <div class="head">
+                <span class="kind-chip">{{ f.row.kind }}</span>
+                <b>{{ f.headline }}</b>
+                {{ F.conf(f.row.confidence) }} {{ F.status(f.row.status) }}
+              </div>
+              {{ F.payload_table(f.row.kind, f.payload) }}
+              {% if f.row.evidence %}
+                <details class="ev"><summary>evidence &amp; provenance</summary>
+                  <blockquote class="evidence">{{ f.row.evidence[:900] }}</blockquote>
+                  <div style="margin-top:.3rem">{{ F.provenance(f.row) }}</div>
+                </details>
+              {% else %}
+                <div>{{ F.provenance(f.row) }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+          <p class="muted" style="font-size:12px;margin:.6rem 0 0">
+            Verify or correct these in the <a href="/review">review queue</a>.</p>
+        {% else %}
+          <p class="muted">Nothing derived for this company yet &mdash;
+             <b>Run analysis</b> pulls the latest annual report and derives the
+             ICB classification, voting rights and ADR ratios locally.</p>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <h2>Entity facts {% if cover_label %}<span class="muted">— {{ cover_label }}</span>{% endif %}</h2>
+        {{ entity_html|safe }}
+      </div>
+
+      <div class="card">
+        <h2>Security facts</h2>
+        {{ security_html|safe }}
+      </div>
+
+      <div class="card">
+        <h2>Filings <span class="muted">— “View” renders the cleaned document →</span></h2>
+        {% for f in rows %}
+          <div class="filing {{ 'sel' if f.selected else '' }}">
+            <span class="form">{{ f.form }}</span>
+            <span class="dates">
+              {{ f.filing_date }}{% if f.report_date %} · period {{ f.report_date }}{% endif %}
+              {% if f.has_xbrl %}<span class="xbrl-dot" title="inline XBRL"></span>{% endif %}
+            </span>
+            <span class="links">
+              <a href="{{ f.detail_url }}" target="_blank" title="EDGAR filing index">index</a>
+              <a href="{{ f.filing_url }}" target="_blank" title="Primary document">doc</a>
+              <a href="{{ f.txt_url }}" target="_blank" title="Full submission .txt">.txt</a>
+              <a class="view" href="/cik/{{ cik }}?acc={{ f.accession }}">View</a>
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="right">
+      <iframe src="/html/{{ cik }}/{{ selected_acc }}" title="cleaned filing"></iframe>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% import "_facts.html" as F %}
+{% block title %}Review queue — Research Desk{% endblock %}
+
+{% block style %}
+<style>
+  .tabs { display:flex; gap:.4rem; margin:0 0 1rem; }
+  .tabs a { padding:.35rem .9rem; border:1px solid var(--line2); border-radius:999px;
+            font-size:13px; background:#fbf9f2; }
+  .tabs a.active { background:var(--green); border-color:var(--green); color:#fff; }
+  .tabs a:hover { text-decoration:none; }
+  .item .head { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+  .item .head .co { font-family:var(--serif); font-size:17px; }
+  .actions { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;
+             margin-top:.7rem; }
+  .actions input[type=text] { flex:1; min-width:220px; padding:.4rem .6rem;
+      border:1px solid var(--line2); border-radius:7px; font-size:13px;
+      background:#fffdf8; }
+  details.editor { margin-top:.55rem; }
+  details.editor summary { cursor:pointer; font-size:12.5px; color:var(--muted); }
+  details.editor textarea { width:100%; min-height:130px; font-family:var(--mono);
+      font-size:12.5px; border:1px solid var(--line2); border-radius:7px;
+      padding:.5rem; background:#fffdf8; margin:.4rem 0; }
+  .empty { text-align:center; color:var(--muted); padding:3rem 0; }
+  .empty .big { font-family:var(--serif); font-size:22px; color:var(--ink); }
+</style>
+{% endblock %}
+
+{% block content %}
+  <h1 style="font-size:26px;margin:.4rem 0 1rem">Review queue</h1>
+
+  <div class="tabs">
+    {% for s, n in tab_counts %}
+      <a href="/review?status={{ s }}" class="{{ 'active' if s == status }}">
+        {{ s }} ({{ n }})</a>
+    {% endfor %}
+  </div>
+
+  {% if not items %}
+    <div class="empty">
+      <div class="big">Nothing {{ status }} right now.</div>
+      <p>Derived facts land here for a human verdict. Run
+         <code>python -m analysis.analyze TICKER</code> or use
+         <b>Run analysis</b> on a company page.</p>
+    </div>
+  {% endif %}
+
+  {% for it in items %}
+    <div class="card item rise" style="animation-delay:{{ loop.index0 * 0.04 }}s">
+      <div class="head">
+        <span class="co"><a href="/cik/{{ it.row.cik }}">{{ it.row.entity_name or it.row.cik }}</a></span>
+        {% if it.row.ticker %}<span class="mono muted">{{ it.row.ticker }}</span>{% endif %}
+        <span class="kind-chip">{{ it.row.kind }}</span>
+        {{ F.conf(it.row.confidence) }}
+        {{ F.status(it.row.status) }}
+        <span style="margin-left:auto">{{ F.provenance(it.row) }}</span>
+      </div>
+      <hr class="rule">
+      {{ F.payload_table(it.row.kind, it.payload) }}
+      {% if it.row.evidence %}
+        <blockquote class="evidence">{{ it.row.evidence[:1200] }}</blockquote>
+      {% endif %}
+      {% if it.row.review_note %}
+        <p class="muted" style="font-size:12.5px;margin:.5rem 0 0">
+          note: {{ it.row.review_note }}</p>
+      {% endif %}
+
+      <form method="post" action="/review/{{ it.row.id }}">
+        <div class="actions">
+          <input type="text" name="note" placeholder="optional note (why approved / rejected / edited)">
+          <button class="btn small" name="action" value="approve">Approve</button>
+          <button class="btn small danger" name="action" value="reject">Reject</button>
+        </div>
+        <details class="editor">
+          <summary>edit the values (JSON)</summary>
+          <textarea name="edited_json">{{ it.pretty }}</textarea>
+          <button class="btn small ghost" name="action" value="edit">Save edit</button>
+        </details>
+        <input type="hidden" name="back" value="{{ status }}">
+      </form>
+    </div>
+  {% endfor %}
+{% endblock %}

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}EDGAR Research Desk{% endblock %}</title>
+{% block head %}{% endblock %}
+<style>
+  :root {
+    --paper:#f6f4ee; --card:#fffdf9; --ink:#20291f; --muted:#71796d;
+    --line:#e4dfd2; --line2:#cfc8b4; --topbar:#15291f;
+    --green:#0e5a43; --green-ink:#0b4634; --green-soft:#e6efe9;
+    --amber:#8f6407; --amber-soft:#f6ecd4;
+    --red:#9b1c1c; --red-soft:#f9e9e7;
+    --gray-soft:#ece9e0;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --mono:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; }
+  body { font:14px/1.55 "Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,sans-serif;
+         color:var(--ink); background:var(--paper); }
+  a { color:var(--green); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .muted { color:var(--muted); }
+  .mono, code { font-family:var(--mono); font-size:.92em; }
+  h1,h2.display { font-family:var(--serif); font-weight:600; letter-spacing:-.01em; }
+
+  /* ── top bar ─────────────────────────────────────────────────────────── */
+  .topbar { display:flex; align-items:center; gap:1.4rem; padding:.65rem 1.2rem;
+            background:var(--topbar); color:#efeadf; }
+  .brand { font-family:var(--serif); font-size:19px; color:#fff; white-space:nowrap; }
+  .brand em { font-style:italic; color:#c9dcd2; }
+  .brand:hover { text-decoration:none; }
+  .topnav { display:flex; gap:1.1rem; font-size:13px; }
+  .topnav a { color:#cfdcd2; padding:.2rem 0; border-bottom:2px solid transparent; }
+  .topnav a:hover { color:#fff; text-decoration:none; }
+  .topnav a.active { color:#fff; border-bottom-color:#8fb8a5; }
+  .topnav .count { display:inline-block; min-width:18px; text-align:center;
+                   background:#c78f1b; color:#1d1503; border-radius:999px;
+                   font-size:11px; font-weight:700; padding:0 5px; margin-left:4px; }
+  .topbar form { margin-left:auto; display:flex; gap:.45rem; }
+  .topbar input { padding:.42rem .65rem; border:1px solid #ffffff2e; border-radius:6px;
+                  width:240px; font-size:13px; background:#ffffff14; color:#fff; }
+  .topbar input::placeholder { color:#b9c6bc; }
+  .topbar button { padding:.42rem .9rem; border:0; border-radius:6px; cursor:pointer;
+                   background:#2f6b52; color:#fff; font-size:13px; font-weight:600; }
+  .topbar button:hover { background:#387f62; }
+
+  /* ── shared chrome ───────────────────────────────────────────────────── */
+  .wrap { max-width:1120px; margin:0 auto; padding:1.4rem 1.2rem 3rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
+          padding:1rem 1.1rem; margin-bottom:1rem;
+          box-shadow:0 1px 2px rgba(60,50,20,.04); }
+  .card h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.1em;
+             color:var(--muted); margin:0 0 .65rem; font-weight:700; }
+  .rule { border:0; border-top:1px solid var(--line); margin:.8rem 0; }
+  .err { background:var(--red-soft); border:1px solid #eac8c4; color:var(--red);
+         padding:.6rem .9rem; border-radius:8px; margin:0 0 1rem; }
+  .flash { background:var(--green-soft); border:1px solid #cbdcd2; color:var(--green-ink);
+           padding:.6rem .9rem; border-radius:8px; margin:0 0 1rem; }
+
+  table.ledger { width:100%; border-collapse:collapse; font-size:13px; }
+  table.ledger th { text-align:left; font-size:11px; text-transform:uppercase;
+                    letter-spacing:.07em; color:var(--muted); font-weight:700;
+                    border-bottom:2px solid var(--line2); padding:.4rem .55rem; }
+  table.ledger td { border-bottom:1px solid var(--line); padding:.45rem .55rem;
+                    vertical-align:top; }
+  table.ledger tr:hover td { background:#f5f2e8; }
+  table.kv { width:100%; border-collapse:collapse; font-size:13px; }
+  table.kv th { text-align:left; color:var(--muted); font-weight:500;
+                padding:.18rem .6rem .18rem 0; white-space:nowrap; width:1%;
+                vertical-align:top; }
+  table.kv td { padding:.18rem 0; }
+
+  .badge { display:inline-block; padding:.07rem .5rem; border-radius:999px;
+           font-size:11px; font-weight:700; letter-spacing:.02em; }
+  .conf-high   { background:var(--green-soft); color:var(--green-ink); }
+  .conf-medium { background:var(--amber-soft); color:var(--amber); }
+  .conf-low    { background:var(--gray-soft);  color:#5d6257; }
+  .conf-review { background:var(--red-soft);   color:var(--red); }
+  .st-pending  { background:var(--amber-soft); color:var(--amber); }
+  .st-approved { background:var(--green-soft); color:var(--green-ink); }
+  .st-rejected { background:var(--red-soft);   color:var(--red); }
+  .st-edited   { background:#e3ecf7; color:#24568f; }
+  .kind-chip { display:inline-block; font-family:var(--mono); font-size:11px;
+               font-weight:600; padding:.05rem .45rem; border:1px solid var(--line2);
+               border-radius:5px; background:#f3f0e6; color:#4c5548; }
+
+  .btn { display:inline-block; padding:.4rem .95rem; border-radius:7px; border:0;
+         background:var(--green); color:#fff; font-size:13px; font-weight:600;
+         cursor:pointer; }
+  .btn:hover { background:var(--green-ink); text-decoration:none; }
+  .btn.ghost { background:transparent; border:1px solid var(--line2); color:var(--ink); }
+  .btn.ghost:hover { border-color:var(--green); color:var(--green); }
+  .btn.danger { background:transparent; border:1px solid #d9b3ae; color:var(--red); }
+  .btn.danger:hover { background:var(--red-soft); }
+  .btn.small { padding:.25rem .7rem; font-size:12px; }
+
+  blockquote.evidence { margin:.5rem 0 0; padding:.45rem .9rem;
+      border-left:3px solid var(--line2); background:#faf8f1;
+      font-family:var(--serif); font-style:italic; font-size:13.5px;
+      color:#43503f; white-space:pre-line; }
+  .prov { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
+
+  @keyframes rise { from { opacity:0; transform:translateY(7px); }
+                    to   { opacity:1; transform:none; } }
+  .rise { animation:rise .45s cubic-bezier(.2,.7,.3,1) both; }
+</style>
+{% block style %}{% endblock %}
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">EDGAR <em>Research Desk</em></a>
+    <nav class="topnav">
+      <a href="/" class="{{ 'active' if nav == 'home' }}">Overview</a>
+      <a href="/review" class="{{ 'active' if nav == 'review' }}">Review queue
+        {%- if pending_count %}<span class="count">{{ pending_count }}</span>{% endif %}</a>
+    </nav>
+    <form action="/go" method="get">
+      <input name="q" placeholder="CIK or ticker  (SHEL, META, 320193...)"
+             {% if nav == 'home' %}autofocus{% endif %}>
+      <button type="submit">Open</button>
+    </form>
+  </header>
+
+  {% block body %}
+  <div class="wrap">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, m in msgs %}
+        <div class="{{ 'err' if cat == 'error' else 'flash' }}">{{ m }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </div>
+  {% endblock %}
+</body>
+</html>

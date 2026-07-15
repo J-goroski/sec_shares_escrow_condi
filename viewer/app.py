@@ -1,18 +1,24 @@
 """
-viewer/app.py — a small Flask UI over the SEC pipeline.
+viewer/app.py — the EDGAR Research Desk (Flask).
 
-Enter a CIK (or ticker) and get a two-pane workspace:
+Three views over the pipeline:
 
-  LEFT  — the company's core info (name, tickers, exchange, SIC, address),
-          the XBRL cover-page **entity** and **security** facts, and the list
-          of recent filings with direct links to the real documents on SEC.gov.
-  RIGHT — a scrollable, isolated render of the selected filing's **cleaned HTML**
-          (produced on demand by ``sec_filing_manual_extract.process_submission``
-          and cached in ``clean_html/`` alongside the notebook's output).
+  Home      — dashboard: search, pipeline status, stats over the research
+              store, latest derived facts.
+  Company   — the original two-pane workspace (core info, XBRL cover facts,
+              filing list on the left; cleaned filing HTML on the right) plus
+              the company's DERIVED FACTS (ICB / voting rights / ADR ratio)
+              with evidence, confidence and review status.  "Run analysis"
+              executes the full pipeline for the company in a background
+              thread and the page live-refreshes until it lands.
+  Review    — the analyst queue: approve / reject / edit every derived fact
+              set; verdicts persist in analysis/research.sqlite and survive
+              pipeline re-runs (unchanged results never reset a verdict).
 
-Everything is built from the existing modules — this file adds a UI, it does not
-change the pipeline.  All SEC traffic still flows through the one rate-limited
-fetcher in ``sec_filings_sync``.
+Everything is built from the existing modules — this file adds UI + workflow,
+it does not change the pipeline.  All SEC traffic flows through the one
+rate-limited fetcher in ``sec_filings_sync``; all LLM calls flow through
+``analysis.ollama_client`` (and the app degrades gracefully without Ollama).
 
 Run
 ---
@@ -23,9 +29,11 @@ from __future__ import annotations
 
 import glob
 import gzip
+import json
 import os
 import re
 import sys
+import threading
 
 # Make the project root importable whether run from root or from viewer/.
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,7 +42,8 @@ if PROJECT_ROOT not in sys.path:
 
 import requests
 import pandas as pd
-from flask import Flask, request, redirect, render_template_string, Response
+from flask import (Flask, request, redirect, render_template, Response,
+                   flash, url_for)
 from markupsafe import escape
 
 from methods.sec_filings_sync import (
@@ -43,8 +52,12 @@ from methods.sec_filings_sync import (
 )
 from methods.sec_xbrl_extract import parse_filings, cover_pages
 from methods.sec_filing_manual_extract import process_submission
+from analysis.research_store import ResearchDB
+from analysis.analyze import analyze_company
+from analysis.ollama_client import backend_info
 
 app = Flask(__name__)
+app.secret_key = "edgar-research-desk-dev"      # local dev tool only
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 CLEAN_DIR    = os.path.join(PROJECT_ROOT, "clean_html")
@@ -52,6 +65,9 @@ DEFAULT_FORMS = ["10-K", "10-Q", "20-F", "40-F", "8-K"]
 COVER_FORMS   = {"10-K", "10-Q", "20-F", "40-F"}   # forms carrying an XBRL cover
 ANNUAL_FORMS  = ["10-K", "20-F", "40-F"]           # richest doc for the viewer
 MAX_FILINGS   = 60                                  # cap the filing list length
+SAMPLES = [("AAPL", "320193"), ("SHEL", "1306965"), ("META", "1326801"),
+           ("GOOGL", "1652044"), ("KO", "21344"), ("TSM", "1046179"),
+           ("BRK-B", "1067983"), ("BABA", "1577552")]
 
 # ── In-process caches (dev server, single user — plain dicts are fine) ─────────
 _filings_cache: dict[str, list] = {}     # cik -> list[FilingRecord]
@@ -59,6 +75,7 @@ _header_cache:  dict[str, dict] = {}     # cik -> company header dict
 _cover_cache:   dict[str, tuple] = {}    # cik -> (entity_df, security_df, label)
 _html_cache:    dict[tuple, str] = {}    # (cik, accession) -> cleaned html
 _ticker_map:    dict[str, str] = {}      # TICKER -> cik (lazy-loaded)
+_analysis_running: dict[str, bool] = {}  # cik -> pipeline thread live
 
 _SESSION = requests.Session()
 _SESSION.headers.update(UA)
@@ -131,6 +148,8 @@ def _cover_facts(cik: str, filings: list, selected=None) -> tuple:
         return _cover_cache[key]
     try:
         facts = parse_filings([src], verbose=False)
+        if facts.empty:
+            raise ValueError("no XBRL facts parsed")
         entity, security = cover_pages(facts)
         result = (entity, security, f"{src.form_type} filed {src.filing_date}")
     except Exception as exc:                            # noqa: BLE001
@@ -243,23 +262,91 @@ def _security_table_html(security: pd.DataFrame) -> str:
                       classes="tbl", justify="left")
 
 
+# ── Research-store helpers ────────────────────────────────────────────────────
+
+def _headline_for(kind: str, payload) -> str:
+    """One-line summary of a derived payload for lists and cards."""
+    try:
+        if kind == "icb" and isinstance(payload, dict):
+            parts = [payload.get("industry"), payload.get("sector"),
+                     payload.get("subsector")]
+            parts = [p for p in parts if p]
+            dedup = [p for i, p in enumerate(parts)
+                     if i == 0 or p != parts[i - 1]]
+            return " › ".join(dedup) or "unclassified"
+        if kind == "voting" and isinstance(payload, list):
+            bits = []
+            for r in payload:
+                v = r.get("votes_per_share")
+                bits.append(f"{r.get('class_label', '?')} "
+                            f"{('%g' % v) if v is not None else '?'}")
+            return " · ".join(bits) or "no classes"
+        if kind == "adr" and isinstance(payload, list):
+            return " · ".join(r.get("ratio_display") or "ratio unknown"
+                              for r in payload) or "no ADS"
+    except Exception:                                   # noqa: BLE001
+        pass
+    return "(unrenderable payload)"
+
+
+def _factsets(rows: list[dict]) -> list[dict]:
+    out = []
+    for row in rows:
+        payload = ResearchDB.payload(row)
+        out.append({"row": row, "payload": payload,
+                    "headline": _headline_for(row["kind"], payload),
+                    "pretty": json.dumps(payload, indent=2,
+                                         ensure_ascii=False)})
+    return out
+
+
+def _run_analysis_bg(cik: str) -> None:
+    """Background pipeline run (own session + own DB connection)."""
+    try:
+        analyze_company(cik, clean_dir=CLEAN_DIR, verbose=False)
+    except Exception:                                   # noqa: BLE001
+        pass                    # errors surface as 'nothing derived'
+    finally:
+        _analysis_running.pop(cik, None)
+
+
+@app.context_processor
+def _inject_globals():
+    try:
+        db = ResearchDB()
+        pending = db.stats().get("pending", 0)
+        db.close()
+    except Exception:                                   # noqa: BLE001
+        pending = 0
+    return {"pending_count": pending}
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  Routes
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/")
-def index():
-    return render_template_string(PAGE_HTML, view=None)
+def home():
+    db = ResearchDB()
+    try:
+        stats = db.stats()
+        recent = _factsets(db.recent(14))
+        recent = [{**f["row"], "headline": f["headline"]} for f in recent]
+        companies = db.companies()
+    finally:
+        db.close()
+    return render_template(
+        "home.html", nav="home", stats=stats, recent=recent,
+        companies=companies, samples=SAMPLES, llm=backend_info())
 
 
 @app.route("/go")
 def go():
     cik = _resolve_query(request.args.get("q", ""))
     if not cik:
-        return render_template_string(
-            PAGE_HTML, view=None,
-            error=f"Couldn't resolve '{escape(request.args.get('q',''))}' "
-                  "to a CIK or ticker.")
+        flash(f"Couldn't resolve '{request.args.get('q', '')}' to a CIK "
+              "or ticker.", "error")
+        return redirect(url_for("home"))
     return redirect(f"/cik/{cik}")
 
 
@@ -270,14 +357,14 @@ def cik_view(cik):
         header  = _company_header(cik)
         filings = _company_filings(cik)
     except SECBlockedError:
-        return render_template_string(
-            PAGE_HTML, view=None,
-            error="SEC rate limit hit (10-minute cool-off). Wait and retry.")
+        flash("SEC rate limit hit (10-minute cool-off). Wait and retry.",
+              "error")
+        return redirect(url_for("home"))
 
     if not filings:
-        return render_template_string(
-            PAGE_HTML, view=None,
-            error=f"No {'/'.join(DEFAULT_FORMS)} filings found for CIK {escape(cik)}.")
+        flash(f"No {'/'.join(DEFAULT_FORMS)} filings found for CIK {cik}.",
+              "error")
+        return redirect(url_for("home"))
 
     filings = filings[:MAX_FILINGS]
 
@@ -289,6 +376,12 @@ def cik_view(cik):
 
     selected = _find_filing(filings, acc)
     entity, security, cover_label = _cover_facts(cik, filings, selected)
+
+    db = ResearchDB()
+    try:
+        factsets = _factsets(db.for_company(cik))
+    finally:
+        db.close()
 
     rows = [{
         "form":        f.form_type,
@@ -302,12 +395,74 @@ def cik_view(cik):
         "selected":    f.accession_number == acc,
     } for f in filings]
 
-    return render_template_string(
-        PAGE_HTML, view=True, header=header, rows=rows, cik=cik,
+    return render_template(
+        "company.html", nav=None, header=header, rows=rows, cik=cik,
         selected_acc=acc, cover_label=cover_label,
         entity_html=_entity_kv_html(entity),
         security_html=_security_table_html(security),
-    )
+        factsets=factsets,
+        analysis_running=cik in _analysis_running)
+
+
+@app.route("/analyze/<cik>", methods=["POST"])
+def analyze_route(cik):
+    cik = str(int(cik)) if cik.isdigit() else cik
+    if cik not in _analysis_running:
+        _analysis_running[cik] = True
+        threading.Thread(target=_run_analysis_bg, args=(cik,),
+                         daemon=True).start()
+        flash("Analysis started — ICB, voting rights and ADR ratios are "
+              "being derived from the latest annual report.")
+    return redirect(f"/cik/{cik}")
+
+
+@app.route("/review")
+def review():
+    status = request.args.get("status", "pending")
+    if status not in ("pending", "approved", "rejected", "edited"):
+        status = "pending"
+    db = ResearchDB()
+    try:
+        stats = db.stats()
+        items = _factsets(db.queue(status=status))
+    finally:
+        db.close()
+    tab_counts = [(s, stats.get(s, 0))
+                  for s in ("pending", "approved", "rejected", "edited")]
+    return render_template("review.html", nav="review", status=status,
+                           items=items, tab_counts=tab_counts)
+
+
+@app.route("/review/<int:analysis_id>", methods=["POST"])
+def review_action(analysis_id):
+    action = request.form.get("action", "")
+    note = (request.form.get("note") or "").strip() or None
+    back = request.form.get("back", "pending")
+    db = ResearchDB()
+    try:
+        row = db.get(analysis_id)
+        if row is None:
+            flash("Unknown analysis id.", "error")
+        elif action == "approve":
+            db.review(analysis_id, "approved", note=note)
+            flash(f"Approved {row['ticker'] or row['cik']} / {row['kind']}.")
+        elif action == "reject":
+            db.review(analysis_id, "rejected", note=note)
+            flash(f"Rejected {row['ticker'] or row['cik']} / {row['kind']}.")
+        elif action == "edit":
+            try:
+                edited = json.loads(request.form.get("edited_json", ""))
+            except json.JSONDecodeError as exc:
+                flash(f"Edit not saved — invalid JSON: {exc}", "error")
+                return redirect(url_for("review", status=back))
+            db.review(analysis_id, "edited", note=note, edited_result=edited)
+            flash(f"Saved edited values for {row['ticker'] or row['cik']} / "
+                  f"{row['kind']}.")
+        else:
+            flash("Unknown action.", "error")
+    finally:
+        db.close()
+    return redirect(url_for("review", status=back))
 
 
 @app.route("/html/<cik>/<accession>")
@@ -331,165 +486,7 @@ def filing_html(cik, accession):
     return Response(_inject_base(html, filing.index_url), mimetype="text/html")
 
 
-# ── Template ──────────────────────────────────────────────────────────────────
-
-PAGE_HTML = r"""
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% if view %}{{ header.name }}{% else %}SEC Filing Viewer{% endif %}</title>
-<style>
-  :root { --bg:#f4f6f8; --card:#fff; --line:#e2e6ea; --ink:#1c2430; --muted:#6b7684;
-          --accent:#2563eb; --accent-soft:#eaf1ff; --slate:#1f2937; }
-  * { box-sizing:border-box; }
-  html,body { margin:0; height:100%; }
-  body { font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-         color:var(--ink); background:var(--bg); }
-  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
-  .muted { color:var(--muted); }
-  code, .mono { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
-
-  /* top bar */
-  .topbar { display:flex; align-items:center; gap:1rem; padding:.6rem 1rem;
-            background:var(--slate); color:#fff; }
-  .topbar .brand { font-weight:700; letter-spacing:.02em; white-space:nowrap; }
-  .topbar form { margin-left:auto; display:flex; gap:.4rem; }
-  .topbar input { padding:.4rem .6rem; border:1px solid #33415522; border-radius:6px;
-                  width:220px; font-size:13px; }
-  .topbar button { padding:.4rem .8rem; border:0; border-radius:6px;
-                   background:var(--accent); color:#fff; cursor:pointer; font-size:13px; }
-
-  /* layout */
-  .split { display:flex; height:calc(100vh - 48px); }
-  .left { width:44%; max-width:640px; min-width:360px; overflow-y:auto; padding:1rem;
-          border-right:1px solid var(--line); }
-  .right { flex:1; background:#fff; }
-  .right iframe { width:100%; height:100%; border:0; }
-
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
-          padding:.9rem 1rem; margin-bottom:1rem; }
-  .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em;
-             color:var(--muted); margin:0 0 .6rem; }
-  .company h1 { font-size:20px; margin:0 0 .3rem; }
-  .pill { display:inline-block; padding:.1rem .5rem; border-radius:999px; font-size:12px;
-          font-weight:600; background:var(--accent-soft); color:var(--accent);
-          margin:0 .3rem .3rem 0; }
-  .meta { display:grid; grid-template-columns:auto 1fr; gap:.15rem .8rem;
-          font-size:13px; margin-top:.5rem; }
-  .meta div:nth-child(odd) { color:var(--muted); }
-
-  table.kv { width:100%; border-collapse:collapse; font-size:13px; }
-  table.kv th { text-align:left; color:var(--muted); font-weight:500; padding:.2rem .6rem .2rem 0;
-                vertical-align:top; white-space:nowrap; width:1%; }
-  table.kv td { padding:.2rem 0; }
-  table.tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
-  table.tbl th { text-align:left; background:#f7f9fb; border-bottom:2px solid var(--line);
-                 padding:.35rem .5rem; }
-  table.tbl td { border-bottom:1px solid var(--line); padding:.35rem .5rem; }
-  table.tbl tr:hover td { background:#f9fbff; }
-
-  /* filing list */
-  .filing { display:flex; align-items:center; gap:.6rem; padding:.5rem .6rem;
-            border:1px solid var(--line); border-radius:8px; margin-bottom:.45rem; }
-  .filing.sel { border-color:var(--accent); background:var(--accent-soft); }
-  .filing .form { font-weight:700; width:52px; }
-  .filing .dates { font-size:12px; color:var(--muted); flex:1; }
-  .filing .links { display:flex; gap:.5rem; font-size:12px; white-space:nowrap; }
-  .filing .view { padding:.25rem .6rem; border-radius:6px; background:var(--accent);
-                  color:#fff; font-size:12px; font-weight:600; }
-  .filing .view:hover { text-decoration:none; opacity:.9; }
-  .xbrl-dot { width:7px; height:7px; border-radius:50%; background:#22c55e; display:inline-block; }
-  .empty { max-width:520px; margin:12vh auto; text-align:center; }
-  .err { background:#fef2f2; border:1px solid #f6c9c9; color:#9b1c1c;
-         padding:.6rem .9rem; border-radius:8px; margin:1rem; }
-</style>
-</head>
-<body>
-  <div class="topbar">
-    <span class="brand">SEC Filing Viewer</span>
-    <form action="/go" method="get">
-      <input name="q" placeholder="CIK or ticker (e.g. 320193 or AAPL)" autofocus>
-      <button type="submit">Load</button>
-    </form>
-  </div>
-
-  {% if error %}<div class="err">{{ error }}</div>{% endif %}
-
-  {% if not view %}
-    <div class="empty">
-      <h1>SEC Filing Viewer</h1>
-      <p class="muted">Enter a CIK number or ticker above to load a company's
-      core info, XBRL cover facts, filing links, and cleaned filing documents.</p>
-      <p class="muted">Try
-        <a href="/cik/320193">Apple (320193)</a> ·
-        <a href="/cik/789019">Microsoft (789019)</a> ·
-        <a href="/cik/1577552">Alibaba (1577552)</a></p>
-    </div>
-  {% else %}
-  <div class="split">
-    <div class="left">
-
-      <div class="card company">
-        <h1>{{ header.name }}</h1>
-        <div>
-          {% for t in header.tickers %}<span class="pill">{{ t }}</span>{% endfor %}
-          {% if not header.tickers %}<span class="muted">No ticker on file</span>{% endif %}
-        </div>
-        <div class="meta">
-          <div>CIK</div><div class="mono">{{ header.cik }}</div>
-          {% if header.exchanges %}<div>Exchange</div><div>{{ header.exchanges|join(', ') }}</div>{% endif %}
-          {% if header.sic %}<div>Industry</div><div>{{ header.sic }}</div>{% endif %}
-          {% if header.category %}<div>Filer</div><div>{{ header.category }}</div>{% endif %}
-          {% if header.incorporation %}<div>Incorporated</div><div>{{ header.incorporation }}</div>{% endif %}
-          {% if header.fiscal_year_end %}<div>FY end</div><div>{{ header.fiscal_year_end }}</div>{% endif %}
-          {% if header.address %}<div>Address</div><div>{{ header.address }}</div>{% endif %}
-          {% if header.phone %}<div>Phone</div><div>{{ header.phone }}</div>{% endif %}
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Entity facts {% if cover_label %}<span class="muted">— {{ cover_label }}</span>{% endif %}</h2>
-        {{ entity_html|safe }}
-      </div>
-
-      <div class="card">
-        <h2>Security facts</h2>
-        {{ security_html|safe }}
-      </div>
-
-      <div class="card">
-        <h2>Filings <span class="muted">— click “View” to render the cleaned document →</span></h2>
-        {% for f in rows %}
-          <div class="filing {{ 'sel' if f.selected else '' }}">
-            <span class="form pill">{{ f.form }}</span>
-            <span class="dates">
-              {{ f.filing_date }}{% if f.report_date %} · period {{ f.report_date }}{% endif %}
-              {% if f.has_xbrl %}<span class="xbrl-dot" title="inline XBRL"></span>{% endif %}
-            </span>
-            <span class="links">
-              <a href="{{ f.detail_url }}" target="_blank" title="EDGAR filing index">index</a>
-              <a href="{{ f.filing_url }}" target="_blank" title="Primary document on SEC.gov">doc</a>
-              <a href="{{ f.txt_url }}" target="_blank" title="Full submission .txt">.txt</a>
-              <a class="view" href="/cik/{{ cik }}?acc={{ f.accession }}">View</a>
-            </span>
-          </div>
-        {% endfor %}
-      </div>
-
-    </div>
-    <div class="right">
-      <iframe src="/html/{{ cik }}/{{ selected_acc }}" title="cleaned filing"></iframe>
-    </div>
-  </div>
-  {% endif %}
-</body>
-</html>
-"""
-
-
 if __name__ == "__main__":
     os.makedirs(CLEAN_DIR, exist_ok=True)
-    print("SEC Filing Viewer — open http://127.0.0.1:5000")
+    print("EDGAR Research Desk - open http://127.0.0.1:5000")
     app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
