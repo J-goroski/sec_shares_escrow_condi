@@ -1,0 +1,79 @@
+sic_start,sic_end,industry_code,sector_code,note
+0100,0999,45,,agriculture forestry fishing -> Consumer Staples (Food Producers)
+1000,1119,55,,metal mining -> Basic Materials
+1220,1299,60,,coal mining -> Energy
+1311,1389,60,,oil and gas extraction and services -> Energy
+1400,1499,55,,nonmetallic mineral mining -> Basic Materials
+1520,1799,50,,construction and contracting -> Industrials
+2000,2079,45,,food products -> Consumer Staples
+2080,2085,45,,beverages -> Consumer Staples
+2086,2099,45,,beverages and food misc -> Consumer Staples
+2100,2199,45,,tobacco -> Consumer Staples
+2200,2399,40,,textiles and apparel -> Consumer Discretionary
+2400,2499,55,,lumber and wood -> Basic Materials (Forestry)
+2500,2599,40,,furniture -> Consumer Discretionary
+2600,2699,55,,paper -> Basic Materials
+2700,2799,40,,printing and publishing -> Consumer Discretionary (Media)
+2800,2832,55,,chemicals -> Basic Materials
+2833,2836,20,,drugs and biologicals -> Health Care
+2840,2899,55,,chemicals misc -> Basic Materials
+2900,2999,60,,petroleum refining -> Energy
+3000,3099,50,,rubber and plastics -> Industrials
+3100,3199,40,,leather goods -> Consumer Discretionary
+3200,3299,50,,stone clay glass -> Industrials (Construction and Materials)
+3300,3499,55,,primary and fabricated metals -> Basic Materials
+3500,3569,50,,industrial machinery -> Industrials
+3570,3579,10,,computer and office equipment -> Technology
+3580,3599,50,,machinery misc -> Industrials
+3600,3659,50,,electrical equipment -> Industrials
+3660,3669,15,,communications equipment -> Telecommunications
+3670,3673,10,,electronic components -> Technology
+3674,3674,10,,semiconductors -> Technology
+3675,3699,10,,electronic components misc -> Technology
+3700,3716,40,,motor vehicles -> Consumer Discretionary
+3720,3729,50,,aircraft and parts -> Industrials (Aerospace)
+3730,3739,50,,ship and boat building -> Industrials
+3740,3749,50,,railroad equipment -> Industrials
+3750,3751,40,,motorcycles and bicycles -> Consumer Discretionary
+3760,3769,50,,guided missiles and space -> Industrials (Defense)
+3770,3799,50,,transportation equipment misc -> Industrials
+3800,3829,50,,instruments and controls -> Industrials
+3841,3851,20,,medical instruments and supplies -> Health Care
+3861,3873,40,,photographic and watches -> Consumer Discretionary
+3900,3999,40,,misc manufacturing -> Consumer Discretionary
+4000,4799,50,,transportation -> Industrials
+4800,4831,15,,communications -> Telecommunications
+4832,4833,40,,radio and tv broadcasting -> Consumer Discretionary (Media)
+4840,4899,15,,cable and communications services -> Telecommunications
+4900,4999,65,,utilities and sanitary services -> Utilities
+5000,5199,50,,wholesale distribution -> Industrials (Industrial Suppliers)
+5200,5399,40,,retail -> Consumer Discretionary
+5400,5499,45,,food stores -> Consumer Staples
+5500,5899,40,,retail misc and restaurants -> Consumer Discretionary
+5900,5911,40,,retail specialty -> Consumer Discretionary
+5912,5912,45,,drug stores -> Consumer Staples
+5913,5999,40,,retail specialty misc -> Consumer Discretionary
+6020,6199,30,,banks and credit institutions -> Financials
+6200,6299,30,,securities brokers and dealers -> Financials
+6300,6499,30,,insurance -> Financials
+6500,6599,35,,real estate -> Real Estate
+6700,6797,30,,holding and investment offices -> Financials
+6798,6798,35,351020,REITs -> Real Estate
+6799,6799,30,,investors nec -> Financials
+7000,7099,40,,hotels and lodging -> Consumer Discretionary
+7200,7299,40,,personal services -> Consumer Discretionary
+7300,7309,50,,business services -> Industrials
+7310,7319,40,,advertising -> Consumer Discretionary (Media Agencies)
+7320,7369,50,,business and employment services -> Industrials
+7370,7379,10,,computer programming and software -> Technology
+7380,7399,50,,business services misc -> Industrials
+7500,7599,40,,auto repair and rental -> Consumer Discretionary
+7600,7699,40,,repair services -> Consumer Discretionary
+7800,7999,40,,motion pictures and recreation -> Consumer Discretionary
+8000,8099,20,,health services -> Health Care
+8100,8199,50,,legal services -> Industrials
+8200,8299,40,,educational services -> Consumer Discretionary
+8300,8399,40,,social services -> Consumer Discretionary
+8700,8730,50,,engineering accounting research -> Industrials
+8731,8731,20,,commercial physical and biological research -> Health Care (biotech)
+8732,8799,50,,research management services -> Industrials

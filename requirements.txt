@@ -12,8 +12,29 @@ requests>=2.28       # all SEC HTTP access
 lxml>=5.0            # XBRL (etree) + HTML parsing; also backs pandas.read_html
 
 # ── Viewer only (viewer/app.py) ───────────────────────────────────────────────
-flask>=3.0           # the local two-pane filing viewer
+flask>=3.0           # the EDGAR Research Desk app
 markupsafe>=2.1      # imported directly by the viewer (also a Flask dependency)
+
+# ── Analysis (analysis/) ──────────────────────────────────────────────────────
+# The analysis core needs no extra packages (Ollama over HTTP via `requests`,
+# stdlib sqlite3 for the research store).  The local LLM has two
+# interchangeable backends (env LLM_BACKEND = auto | ollama | embedded | none;
+# without either backend the deterministic regex/rules layers still run):
+#
+#   A) Ollama server:  install https://ollama.com then `ollama pull gemma2:2b`
+#   B) EMBEDDED (serverless — no daemon, nothing to connect to): the two
+#      lines below + downloading a weights file once:
+#          python analysis/models/download_model.py
+#      >>> The weights file lives at:  analysis/models/*.gguf  <<<
+#      (currently gemma-2-2b-it-Q4_K_M.gguf, ~1.7 GB, gitignored — safe to
+#       delete; re-fetch any time with the command above.)
+#
+# The extra index below serves prebuilt CPU wheels for llama-cpp-python —
+# WITHOUT it, plain PyPI ships source only and pip needs a C++ toolchain
+# (fails on this machine).  Comment out both lines if you only use Ollama.
+--prefer-binary
+--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+llama-cpp-python>=0.3    # embedded serverless LLM backend (loads the .gguf)
 
 # ── Notebook only (sec_filings_notebook.ipynb) ────────────────────────────────
 # Uncomment if you want to run the notebook outside an IDE that already

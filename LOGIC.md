@@ -215,6 +215,85 @@ profile-only for speed, then deep-validate just the CIKs that changed.
 
 ---
 
+## 7. `analysis/` — derived facts with local LLMs (+ the Research Desk)
+
+The rule that organises the whole package: **the LLM interprets text it is
+shown; it never answers from memory.** Every prompt embeds the filing text,
+every reply is JSON-schema-constrained (Ollama structured outputs), and every
+stored fact carries method, model, confidence and the evidence sentence. The
+deterministic layer always runs first and always works without Ollama.
+
+**Two LLM backends, one gateway.** `ollama_client` routes every call to
+either the Ollama server or the EMBEDDED backend (`local_llm.py`:
+llama-cpp-python loads a `.gguf` from `analysis/models/` in-process — no
+server, nothing to connect to; env `LLM_BACKEND` forces a choice, `auto`
+prefers the server). Both give schema-constrained JSON. The embedded
+gemma-2-2b matched the served model 4/4 on the extraction benchmark on CPU
+(~1–3 s/call). Gotcha: gemma-2's chat template raises "System role not
+supported", so the embedded backend folds any system prompt into the user
+turn — equivalent for instruction-following extraction.
+
+**Model selection is empirical, per task.** A 4-task benchmark over the
+installed models showed schema-constrained decoding makes small models strong
+*extractors* — gemma2:2b went 4/4 (including parsing "one-half of one ordinary
+share" → 0.5) and was fastest, while llama3.2:1b failed 3/4. But
+*classification* is a judgement call: gemma2:2b misplaced Apple (Software) and
+Nucor (Construction); both 7–8B models placed them correctly, so
+`icb_classify` prefers the largest installed model while extraction keeps the
+small fast default. Preference lists live in code and skip models that aren't
+installed, so pulling a better model upgrades the pipeline with no change.
+
+**Enum by name, not code.** The single biggest ICB accuracy lever: with the 45
+sector *codes* as the enum, models returned the right rationale and the wrong
+adjacent code ("Beverages" reasoning → Tobacco's code) — 4/10. Switching the
+enum to sector *names* (mapped back to codes in Python) → 8/10, larger model →
+9/10, definitional SIC hint (6798=REITs, same-industry tiebreak only) → 10/10.
+
+**Prose needs stricter patterns than titles.** The loose ratio regex that is
+safe on a 100-char security title false-positives on 200 pages of prose (TSM:
+"percentage of shares held by each individual … represents" happened to yield
+the *correct* 5.0 — luck, not extraction; AZN: holder statistics yielded
+18.3). Filing-text patterns therefore require the ADS to be the grammatical
+subject of "represents", quantities reject `%`, LLM candidates filter out
+holder-count sentences, and LLM ratios face a plausibility cap (0.0001–100).
+
+**A missing ratio can be the right answer.** AZN's 20-F contains no ADS ratio
+because AstraZeneca terminated its ADR programme on 2 Feb 2026 and
+direct-listed its Ordinary Shares on the NYSE. The extractor returning `None`
+for AZN is a **pass**, and a hallucinated value would have been the failure —
+which is exactly what the caps/filters prevented.
+
+**Voting rights: two passes, one sentence pool.** Rules (class-mention ↔
+votes-expression pairing, non-voting, relative-rights) and the LLM read the
+same candidate sentences; agreement → `high`, disagreement → `review`, an
+abstention is not a conflict. Pairing associates each votes-expression with
+the nearest *preceding* class, except the "one vote for each share of Common
+Stock" form where the class follows the expression (Coca-Cola's proxy — the
+class is captured inside the per-share tail; a general forward-fallback would
+mispair "Share units do not have voting rights … Common Stock"). Relative
+rights resolve against the referenced class (Berkshire B = 1/10,000 × A = 
+0.0001). Source fallback: annual report → DEF 14A (KO states voting only in
+the proxy).
+
+**QA scorecards (live EDGAR):** ADR 15/15 (SHEL 2, BABA 8, TSM 5 prose-only,
+SONY 1, TM 10, BP 6, VALE 1, PBR 2, UL 1, SAP 1, NVO 1, HSBC 5, RIO 1, INFY 1,
+AZN None-correct); voting META/GOOGL/KO/BRK-B all correct; ICB 10/10 sectors
+(and spot-on subsectors: Computer Hardware, Integrated Oil and Gas, Soft
+Drinks, Iron and Steel, Industrial REITs…). FTSE really does classify Meta
+under Consumer Digital Services — the pipeline reproduced that independently.
+
+**Review workflow.** `research_store` keeps one row per (company, kind, source
+accession). Verdicts (approve/reject/edit) survive re-runs; only a *changed*
+result resets a row to `pending` with a supersede note. Edited JSON takes
+precedence over the model output everywhere (`ResearchDB.payload`).
+
+**Data files:** `data/icb_taxonomy.csv` (validated 11/20/45/173 against the
+published structure; rebuild via `build_icb_taxonomy.py`) and
+`data/sic_icb_prior.csv` (SIC ranges → expected industry, narrowest range
+wins, optional definitional sector hint) — mappings are data, not code.
+
+---
+
 ## Design principles
 
 1. **One rate-limited path.** All SEC traffic goes through

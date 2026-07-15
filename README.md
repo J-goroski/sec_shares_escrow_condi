@@ -7,9 +7,13 @@ pulled from SEC EDGAR filings:
 2. **structured XBRL facts** + clean "cover page" tables (entity & security),
 3. **manual / unstructured extraction** from the raw filing text (clean HTML,
    geographic/revenue/segment tables, and free‑text "concentration" disclosures),
-4. **country‑of‑incorporation + HQ assignment and monthly monitoring**.
+4. **country‑of‑incorporation + HQ assignment and monthly monitoring**,
+5. **derived facts via local LLMs + rules** (`analysis/`): ICB classification,
+   votes‑per‑share by share class, and ADR ratios — each with evidence and an
+   analyst review workflow.
 
-Plus a small **Flask viewer** and a **Jupyter notebook** to drive it all.
+Plus the **EDGAR Research Desk** (Flask app: filings reader + review queue)
+and a **Jupyter notebook** to drive it all.
 
 > This file is the practical orientation. [`LOGIC.md`](LOGIC.md) has the deeper
 > design rationale and the QA‑surfaced edge cases.
@@ -19,8 +23,16 @@ Plus a small **Flask viewer** and a **Jupyter notebook** to drive it all.
 ## Install & first run
 
 ```bash
-pip install -r requirements.txt          # pandas, requests, lxml (+ flask for the viewer)
+pip install -r requirements.txt   # pandas, requests, lxml, flask,
+                                  # llama-cpp-python (embedded LLM backend)
+
+# optional, one-time: fetch the local LLM weights for serverless analysis
+python analysis/models/download_model.py
 ```
+
+> **⚑ Where the LLM model lives:** `analysis/models/gemma-2-2b-it-Q4_K_M.gguf`
+> (~1.7 GB, gitignored, safe to delete, re-fetch with the command above).
+> Details in [`analysis/models/README.md`](analysis/models/README.md).
 
 Everything talks to **live SEC endpoints**, so there is nothing to host. Two rules
 the SEC enforces and this code obeys automatically:
@@ -52,9 +64,15 @@ top to bottom.
     ├───────────────► submission_txt_url ─► sec_filing_manual_extract
     │                    process_submission() → clean HTML  + tables + statements
     │
-    └───────────────► (CIK) ─────────────► country_assignment
-                         edgar_profile   → current incorporation + HQ (submissions API)
-                         monthly_monitor → snapshot + month‑over‑month diff
+    ├───────────────► (CIK) ─────────────► country_assignment
+    │                    edgar_profile   → current incorporation + HQ (submissions API)
+    │                    monthly_monitor → snapshot + month‑over‑month diff
+    │
+    └───────────────► cover + filing text ─► analysis  (rules first, local LLM assist)
+                         icb_classify    → ICB industry/sector/subsector
+                         voting_rights   → votes per share by class
+                         adr_ratio       → underlying shares per ADS
+                         research_store  → SQLite + analyst review queue
 ```
 
 Two ideas explain **why there are two extraction paths**:
@@ -91,12 +109,31 @@ methods/
       jurisdiction_aliases.csv         England & Wales→UK, Republic of China→Taiwan…
       build_edgar_codes.py             regenerates the codes CSV from the SEC page
 
+analysis/                      Stage 5: derived facts w/ local LLMs (see its README).
+  ollama_client.py               ONE gateway for all LLM calls; routes to an Ollama
+                                 server OR the embedded in-process model
+                                 (schema-constrained JSON, graceful degradation).
+  local_llm.py                   the embedded backend: llama-cpp-python + a .gguf
+                                 from analysis/models/ — no server needed.
+  models/download_model.py       fetch a vetted small .gguf (default gemma-2-2b).
+  adr_ratio.py                   ADR/ADS ratio: title regex → prose regex → LLM.
+  voting_rights.py               votes/share by class: rules + LLM, reconciled.
+  icb_classify.py                ICB classification: SIC prior + LLM (enum by name).
+  research_store.py              SQLite: derived facts + analyst verdicts.
+  analyze.py                     CLI orchestrator: python -m analysis.analyze META
+  data/                          The mappings — CSV, not hardcoded:
+    icb_taxonomy.csv               official ICB 2019+ tree (11/20/45/173, validated)
+    sic_icb_prior.csv              SIC ranges → expected ICB industry (+REIT hint)
+    build_icb_taxonomy.py          regenerates the taxonomy CSV
+
 filing_database/               Daily-index ingestion into SQLite (see its README).
                                The date-driven sibling of sec_filings_sync: mirrors
                                EVERY filing over a date range, then stays current
                                incrementally.  CLIs: bootstrap.py / run.py /
                                enrich.py / status.py.  (DB file is gitignored.)
-viewer/app.py                  Flask two-pane filing viewer (see viewer/README.md).
+viewer/app.py                  EDGAR Research Desk: home dashboard, two-pane filing
+                               workspace + derived-facts panel, analyst review queue
+                               (see viewer/README.md).
 sec_filings_notebook.ipynb     The driver / demo (5 sections, runs top to bottom).
 LOGIC.md                       Design rationale + QA edge cases.
 requirements.txt               Dependencies.
@@ -169,14 +206,45 @@ snapshot, changes = run_monthly(  # the monthly job
 
 See **"Monthly monitoring"** below for the how/why.
 
-### The viewer — `viewer/app.py`
+### 5. Derived facts — `analysis/` (local LLMs + rules)
+
+```bash
+python -m analysis.analyze META GOOGL KO SHEL     # derive + store for review
+```
+
+```python
+from analysis.adr_ratio import extract_adr_ratio
+extract_adr_ratio(title="American Depositary Shares, each representing "
+                        "eight Ordinary Shares").ratio_display   # '1 ADS : 8 ...'
+
+from analysis.voting_rights import extract_voting_rights
+extract_voting_rights(annual_text)     # [VotingRight('Class A', 1.0, ...), ...]
+
+from analysis.icb_classify import classify_icb, business_description
+classify_icb("The Coca-Cola Company", sic="2080",
+             description=business_description(annual_text)).path_display
+# 'Consumer Staples > Food, Beverage and Tobacco > Beverages > Soft Drinks'
+```
+
+Every extraction is **tiered — deterministic rules first, local LLM assist
+second** — and every result carries method, model, confidence and the evidence
+sentence. The LLM has two interchangeable backends: an **Ollama server**, or
+an **embedded serverless model** (`llama-cpp-python` loading a `.gguf` from
+`analysis/models/` in‑process — no server to run or connect to; fetch one with
+`python analysis/models/download_model.py`). Both are optional: without either
+the deterministic layers still run. QA results and design notes:
+[`analysis/README.md`](analysis/README.md).
+
+### The Research Desk — `viewer/app.py`
 
 ```bash
 python viewer/app.py        # http://127.0.0.1:5000  → type a CIK or ticker
 ```
 
-Left pane: company core info + XBRL entity/security facts + filing links.
-Right pane: the cleaned filing HTML in a scrollable iframe. See
+Home dashboard (search, stats, pipeline status) → company workspace (core
+info, **derived facts with evidence**, XBRL cover facts, cleaned filing HTML)
+→ **review queue** where analysts approve / reject / edit every derived fact.
+"Run analysis" on a company page executes the pipeline in the background. See
 [`viewer/README.md`](viewer/README.md).
 
 ---
@@ -261,5 +329,11 @@ Edit `state_country_collisions.csv` (new ISO‑ambiguous state codes) or
   filing reflects the ticker *as filed*.
 - Table extraction from filing HTML is best‑effort — filings use lots of layout
   cells; review the parsed frames.
+- **LLM output is never trusted blind** — the local model only reads text it is
+  handed, its answers are schema‑constrained, cross‑checked against the
+  deterministic layer, and queued for analyst review. Treat `review`‑flagged
+  facts as questions, not answers.
+- **ADR programmes end** — a missing ratio can be correct (AstraZeneca
+  terminated its ADR programme in Feb 2026 and direct‑listed on the NYSE).
 
 More detail and the QA history are in [`LOGIC.md`](LOGIC.md).
