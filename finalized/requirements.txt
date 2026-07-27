@@ -1,0 +1,19 @@
+# finalized/ — dependencies
+#
+#     pip install -r finalized/requirements.txt
+#
+# Python 3.10+ (tested on 3.11.9).  Three packages, all pure-install — no
+# compiler, no service, no API key.  Storage is stdlib sqlite3.
+
+requests>=2.28       # every SEC HTTP request (core.py owns the only fetcher)
+lxml>=5.0            # XBRL instance parsing (xbrl.py, etree)
+pandas>=2.0          # the tidy fact tables xbrl.py returns, and the level 3.5
+                     # cover transform in cover.py
+
+# Not required by this package:
+#   flask / markupsafe   -> the viewer app, not part of finalized/
+#   llama-cpp-python     -> the local-LLM analysis layer, not part of finalized/
+#   jupyter / ipykernel  -> only if you run the notebooks outside an IDE that
+#                           already provides a kernel (VS Code, JetBrains)
+#
+# Tested with: requests 2.32.3, lxml 6.0.2, pandas 2.2.2, SQLite 3.45.1.
