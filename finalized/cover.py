@@ -429,6 +429,46 @@ def merge_listing_rows(sec: pd.DataFrame) -> pd.DataFrame:
     return out.drop(index=drop) if drop else out
 
 
+def drop_duplicate_undimensioned(sec: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove the un-dimensioned copy of a class that is also tagged dimensioned.
+
+    Some filers report one share class twice: once on the stock-class axis and
+    once with no dimension at all.  ``security_facts`` faithfully builds a row
+    for each, so the class is counted twice and the company's shares double.
+    3M is the case: ``us-gaap:CommonStockMember`` and a plain ``CommonStock``
+    line, **both** carrying 515,722,417 and both tagged MMM.
+
+    The test is deliberately strict — same share count *and* same ticker — and
+    only an un-dimensioned row is ever dropped.  Classes that merely happen to
+    share a count must survive: SQM's Series A and Series B, Petco's Class B-1
+    and B-2 and Goldman Sachs's Class S/D/T funds all report equal numbers on
+    genuinely distinct members, and collapsing those would delete real classes.
+    """
+    if sec.empty or "security_member" not in sec.columns:
+        return sec
+    undim = sec["security_member"].isna()
+    if not undim.any() or undim.all():
+        return sec
+
+    out = sec.copy()
+    is_equity = out.get("security_type", pd.Series(index=out.index)).eq("equity")
+    drop = []
+    for idx in out.index[undim & is_equity]:
+        shares = out.at[idx, "shares_outstanding"]
+        if pd.isna(shares):
+            continue
+        sym = out.at[idx, "trading_symbol"]
+        twin = out.index[
+            ~undim & is_equity
+            & out["shares_outstanding"].eq(shares)
+            & (out["trading_symbol"].eq(sym) if pd.notna(sym)
+               else out["trading_symbol"].isna())]
+        if len(twin):
+            drop.append(idx)
+    return out.drop(index=drop) if drop else out
+
+
 # ── the build ─────────────────────────────────────────────────────────────────
 
 def build_cover_tables(
@@ -466,7 +506,8 @@ def build_cover_tables(
                 # Refine first: the merge only joins 'equity' rows, so a
                 # depositary receipt must already be typed 'adr' before it can
                 # be mistaken for the ordinary shares it represents.
-                sec = merge_listing_rows(refine_security_type(security_facts(df)))
+                sec = drop_duplicate_undimensioned(
+                    merge_listing_rows(refine_security_type(security_facts(df))))
                 # Read off the raw facts, not the collapsed frame: the instant
                 # is a property of the fact, and _pivot_cover keeps only values.
                 as_of = security_share_dates(df)

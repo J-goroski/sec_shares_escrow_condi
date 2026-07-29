@@ -1,0 +1,310 @@
+code,name,category,raw_name
+AL,Alabama,state,ALABAMA
+AK,Alaska,state,ALASKA
+AZ,Arizona,state,ARIZONA
+AR,Arkansas,state,ARKANSAS
+CA,California,state,CALIFORNIA
+CO,Colorado,state,COLORADO
+CT,Connecticut,state,CONNECTICUT
+DE,Delaware,state,DELAWARE
+DC,District of Columbia,state,DISTRICT OF COLUMBIA
+FL,Florida,state,FLORIDA
+GA,Georgia,state,GEORGIA
+HI,Hawaii,state,HAWAII
+ID,Idaho,state,IDAHO
+IL,Illinois,state,ILLINOIS
+IN,Indiana,state,INDIANA
+IA,Iowa,state,IOWA
+KS,Kansas,state,KANSAS
+KY,Kentucky,state,KENTUCKY
+LA,Louisiana,state,LOUISIANA
+ME,Maine,state,MAINE
+MD,Maryland,state,MARYLAND
+MA,Massachusetts,state,MASSACHUSETTS
+MI,Michigan,state,MICHIGAN
+MN,Minnesota,state,MINNESOTA
+MS,Mississippi,state,MISSISSIPPI
+MO,Missouri,state,MISSOURI
+MT,Montana,state,MONTANA
+NE,Nebraska,state,NEBRASKA
+NV,Nevada,state,NEVADA
+NH,New Hampshire,state,NEW HAMPSHIRE
+NJ,New Jersey,state,NEW JERSEY
+NM,New Mexico,state,NEW MEXICO
+NY,New York,state,NEW YORK
+NC,North Carolina,state,NORTH CAROLINA
+ND,North Dakota,state,NORTH DAKOTA
+OH,Ohio,state,OHIO
+OK,Oklahoma,state,OKLAHOMA
+OR,Oregon,state,OREGON
+PA,Pennsylvania,state,PENNSYLVANIA
+RI,Rhode Island,state,RHODE ISLAND
+SC,South Carolina,state,SOUTH CAROLINA
+SD,South Dakota,state,SOUTH DAKOTA
+TN,Tennessee,state,TENNESSEE
+TX,Texas,state,TEXAS
+X1,United States,state,UNITED STATES
+UT,Utah,state,UTAH
+VT,Vermont,state,VERMONT
+VA,Virginia,state,VIRGINIA
+WA,Washington,state,WASHINGTON
+WV,West Virginia,state,WEST VIRGINIA
+WI,Wisconsin,state,WISCONSIN
+WY,Wyoming,state,WYOMING
+A0,"Alberta, Canada",province,"ALBERTA, CANADA"
+A1,"British Columbia, Canada",province,"BRITISH COLUMBIA, CANADA"
+A2,"Manitoba, Canada",province,"MANITOBA, CANADA"
+A3,"New Brunswick, Canada",province,"NEW BRUNSWICK, CANADA"
+A4,"Newfoundland, Canada",province,"NEWFOUNDLAND, CANADA"
+A5,"Nova Scotia, Canada",province,"NOVA SCOTIA, CANADA"
+A6,"Ontario, Canada",province,"ONTARIO, CANADA"
+A7,"Prince Edward Island, Canada",province,"PRINCE EDWARD ISLAND, CANADA"
+A8,"Quebec, Canada",province,"QUEBEC, CANADA"
+A9,"Saskatchewan, Canada",province,"SASKATCHEWAN, CANADA"
+B0,"Yukon, Canada",province,"YUKON, CANADA"
+Z4,Canada (Federal Level),country,CANADA (Federal Level)
+B2,Afghanistan,country,AFGHANISTAN
+Y6,Aland Islands,country,ALAND ISLANDS
+B3,Albania,country,ALBANIA
+B4,Algeria,country,ALGERIA
+B5,American Samoa,country,AMERICAN SAMOA
+B6,Andorra,country,ANDORRA
+B7,Angola,country,ANGOLA
+1A,Anguilla,country,ANGUILLA
+B8,Antarctica,country,ANTARCTICA
+B9,Antigua and Barbuda,country,ANTIGUA AND BARBUDA
+C1,Argentina,country,ARGENTINA
+1B,Armenia,country,ARMENIA
+1C,Aruba,country,ARUBA
+C3,Australia,country,AUSTRALIA
+C4,Austria,country,AUSTRIA
+1D,Azerbaijan,country,AZERBAIJAN
+C5,Bahamas,country,BAHAMAS
+C6,Bahrain,country,BAHRAIN
+C7,Bangladesh,country,BANGLADESH
+C8,Barbados,country,BARBADOS
+1F,Belarus,country,BELARUS
+C9,Belgium,country,BELGIUM
+D1,Belize,country,BELIZE
+G6,Benin,country,BENIN
+D0,Bermuda,country,BERMUDA
+D2,Bhutan,country,BHUTAN
+D3,Bolivia,country,BOLIVIA
+1E,Bosnia and Herzegovina,country,BOSNIA AND HERZEGOVINA
+B1,Botswana,country,BOTSWANA
+D4,Bouvet Island,country,BOUVET ISLAND
+D5,Brazil,country,BRAZIL
+D6,British Indian Ocean Territory,country,BRITISH INDIAN OCEAN TERRITORY
+D9,Brunei Darussalam,country,BRUNEI DARUSSALAM
+E0,Bulgaria,country,BULGARIA
+X2,Burkina Faso,country,BURKINA FASO
+E2,Burundi,country,BURUNDI
+E3,Cambodia,country,CAMBODIA
+E4,Cameroon,country,CAMEROON
+E8,Cape Verde,country,CAPE VERDE
+E9,Cayman Islands,country,CAYMAN ISLANDS
+F0,Central African Republic,country,CENTRAL AFRICAN REPUBLIC
+F2,Chad,country,CHAD
+F3,Chile,country,CHILE
+F4,China,country,CHINA
+F6,Christmas Island,country,CHRISTMAS ISLAND
+F7,Cocos (Keeling) Islands,country,COCOS (KEELING) ISLANDS
+F8,Colombia,country,COLOMBIA
+F9,Comoros,country,COMOROS
+G0,Congo,country,CONGO
+Y3,"Congo, the Democratic Republic of the",country,"CONGO, THE DEMOCRATIC REPUBLIC OF THE"
+G1,Cook Islands,country,COOK ISLANDS
+G2,Costa Rica,country,COSTA RICA
+L7,Cote D'Ivoire,country,COTE D'IVOIRE
+1M,Croatia,country,CROATIA
+G3,Cuba,country,CUBA
+G4,Cyprus,country,CYPRUS
+2N,Czech Republic,country,CZECH REPUBLIC
+G7,Denmark,country,DENMARK
+1G,Djibouti,country,DJIBOUTI
+G9,Dominica,country,DOMINICA
+G8,Dominican Republic,country,DOMINICAN REPUBLIC
+H1,Ecuador,country,ECUADOR
+H2,Egypt,country,EGYPT
+H3,El Salvador,country,EL SALVADOR
+H4,Equatorial Guinea,country,EQUATORIAL GUINEA
+1J,Eritrea,country,ERITREA
+1H,Estonia,country,ESTONIA
+H5,Ethiopia,country,ETHIOPIA
+H7,Falkland Islands (Malvinas),country,FALKLAND ISLANDS (MALVINAS)
+H6,Faroe Islands,country,FAROE ISLANDS
+H8,Fiji,country,FIJI
+H9,Finland,country,FINLAND
+I0,France,country,FRANCE
+I3,French Guiana,country,FRENCH GUIANA
+I4,French Polynesia,country,FRENCH POLYNESIA
+2C,French Southern Territories,country,FRENCH SOUTHERN TERRITORIES
+I5,Gabon,country,GABON
+I6,Gambia,country,GAMBIA
+2Q,Georgia,country,GEORGIA
+2M,Germany,country,GERMANY
+J0,Ghana,country,GHANA
+J1,Gibraltar,country,GIBRALTAR
+J3,Greece,country,GREECE
+J4,Greenland,country,GREENLAND
+J5,Grenada,country,GRENADA
+J6,Guadeloupe,country,GUADELOUPE
+GU,Guam,country,GUAM
+J8,Guatemala,country,GUATEMALA
+Y7,Guernsey,country,GUERNSEY
+J9,Guinea,country,GUINEA
+S0,Guinea-Bissau,country,GUINEA-BISSAU
+K0,Guyana,country,GUYANA
+K1,Haiti,country,HAITI
+K4,Heard Island and Mcdonald Islands,country,HEARD ISLAND AND MCDONALD ISLANDS
+X4,Holy See (Vatican City State),country,HOLY SEE (VATICAN CITY STATE)
+K2,Honduras,country,HONDURAS
+K3,Hong Kong,country,HONG KONG
+K5,Hungary,country,HUNGARY
+K6,Iceland,country,ICELAND
+K7,India,country,INDIA
+K8,Indonesia,country,INDONESIA
+K9,"Iran, Islamic Republic of",country,"IRAN, ISLAMIC REPUBLIC OF"
+L0,Iraq,country,IRAQ
+L2,Ireland,country,IRELAND
+Y8,Isle of Man,country,ISLE OF MAN
+L3,Israel,country,ISRAEL
+L6,Italy,country,ITALY
+L8,Jamaica,country,JAMAICA
+M0,Japan,country,JAPAN
+Y9,Jersey,country,JERSEY
+M2,Jordan,country,JORDAN
+1P,Kazakstan,country,KAZAKSTAN
+M3,Kenya,country,KENYA
+J2,Kiribati,country,KIRIBATI
+M4,"Korea, Democratic People's Republic of",country,"KOREA, DEMOCRATIC PEOPLE'S REPUBLIC OF"
+M5,"Korea, Republic of",country,"KOREA, REPUBLIC OF"
+M6,Kuwait,country,KUWAIT
+1N,Kyrgyzstan,country,KYRGYZSTAN
+M7,Lao People's Democratic Republic,country,LAO PEOPLE'S DEMOCRATIC REPUBLIC
+1R,Latvia,country,LATVIA
+M8,Lebanon,country,LEBANON
+M9,Lesotho,country,LESOTHO
+N0,Liberia,country,LIBERIA
+N1,Libyan Arab Jamahiriya,country,LIBYAN ARAB JAMAHIRIYA
+N2,Liechtenstein,country,LIECHTENSTEIN
+1Q,Lithuania,country,LITHUANIA
+N4,Luxembourg,country,LUXEMBOURG
+N5,Macau,country,MACAU
+1U,"Macedonia, the Former Yugoslav Republic of",country,"MACEDONIA, THE FORMER YUGOSLAV REPUBLIC OF"
+N6,Madagascar,country,MADAGASCAR
+N7,Malawi,country,MALAWI
+N8,Malaysia,country,MALAYSIA
+N9,Maldives,country,MALDIVES
+O0,Mali,country,MALI
+O1,Malta,country,MALTA
+1T,Marshall Islands,country,MARSHALL ISLANDS
+O2,Martinique,country,MARTINIQUE
+O3,Mauritania,country,MAURITANIA
+O4,Mauritius,country,MAURITIUS
+2P,Mayotte,country,MAYOTTE
+O5,Mexico,country,MEXICO
+1K,"Micronesia, Federated States of",country,"MICRONESIA, FEDERATED STATES OF"
+1S,"Moldova, Republic of",country,"MOLDOVA, REPUBLIC OF"
+O9,Monaco,country,MONACO
+P0,Mongolia,country,MONGOLIA
+Z5,Montenegro,country,MONTENEGRO
+P1,Montserrat,country,MONTSERRAT
+P2,Morocco,country,MOROCCO
+P3,Mozambique,country,MOZAMBIQUE
+E1,Myanmar,country,MYANMAR
+T6,Namibia,country,NAMIBIA
+P5,Nauru,country,NAURU
+P6,Nepal,country,NEPAL
+P7,Netherlands,country,NETHERLANDS
+P8,Netherlands Antilles,country,NETHERLANDS ANTILLES
+1W,New Caledonia,country,NEW CALEDONIA
+Q2,New Zealand,country,NEW ZEALAND
+Q3,Nicaragua,country,NICARAGUA
+Q4,Niger,country,NIGER
+Q5,Nigeria,country,NIGERIA
+Q6,Niue,country,NIUE
+Q7,Norfolk Island,country,NORFOLK ISLAND
+1V,Northern Mariana Islands,country,NORTHERN MARIANA ISLANDS
+Q8,Norway,country,NORWAY
+P4,Oman,country,OMAN
+R0,Pakistan,country,PAKISTAN
+1Y,Palau,country,PALAU
+1X,"Palestinian Territory, Occupied",country,"PALESTINIAN TERRITORY, OCCUPIED"
+R1,Panama,country,PANAMA
+R2,Papua New Guinea,country,PAPUA NEW GUINEA
+R4,Paraguay,country,PARAGUAY
+R5,Peru,country,PERU
+R6,Philippines,country,PHILIPPINES
+R8,Pitcairn,country,PITCAIRN
+R9,Poland,country,POLAND
+S1,Portugal,country,PORTUGAL
+PR,Puerto Rico,country,PUERTO RICO
+S3,Qatar,country,QATAR
+S4,Reunion,country,REUNION
+S5,Romania,country,ROMANIA
+1Z,Russian Federation,country,RUSSIAN FEDERATION
+S6,Rwanda,country,RWANDA
+Z0,Saint Barthelemy,country,SAINT BARTHELEMY
+U8,Saint Helena,country,SAINT HELENA
+U7,Saint Kitts and Nevis,country,SAINT KITTS AND NEVIS
+U9,Saint Lucia,country,SAINT LUCIA
+Z1,Saint Martin,country,SAINT MARTIN
+V0,Saint Pierre and Miquelon,country,SAINT PIERRE AND MIQUELON
+V1,Saint Vincent and the Grenadines,country,SAINT VINCENT AND THE GRENADINES
+Y0,Samoa,country,SAMOA
+S8,San Marino,country,SAN MARINO
+S9,Sao Tome and Principe,country,SAO TOME AND PRINCIPE
+T0,Saudi Arabia,country,SAUDI ARABIA
+T1,Senegal,country,SENEGAL
+Z2,Serbia,country,SERBIA
+T2,Seychelles,country,SEYCHELLES
+T8,Sierra Leone,country,SIERRA LEONE
+U0,Singapore,country,SINGAPORE
+2B,Slovakia,country,SLOVAKIA
+2A,Slovenia,country,SLOVENIA
+D7,Solomon Islands,country,SOLOMON ISLANDS
+U1,Somalia,country,SOMALIA
+T3,South Africa,country,SOUTH AFRICA
+1L,South Georgia and the South Sandwich Islands,country,SOUTH GEORGIA AND THE SOUTH SANDWICH ISLANDS
+U3,Spain,country,SPAIN
+F1,Sri Lanka,country,SRI LANKA
+V2,Sudan,country,SUDAN
+V3,Suriname,country,SURINAME
+L9,Svalbard and Jan Mayen,country,SVALBARD AND JAN MAYEN
+V6,Swaziland,country,SWAZILAND
+V7,Sweden,country,SWEDEN
+V8,Switzerland,country,SWITZERLAND
+V9,Syrian Arab Republic,country,SYRIAN ARAB REPUBLIC
+F5,Taiwan,country,TAIWAN
+2D,Tajikistan,country,TAJIKISTAN
+W0,"Tanzania, United Republic of",country,"TANZANIA, UNITED REPUBLIC OF"
+W1,Thailand,country,THAILAND
+Z3,Timor-Leste,country,TIMOR-LESTE
+W2,Togo,country,TOGO
+W3,Tokelau,country,TOKELAU
+W4,Tonga,country,TONGA
+W5,Trinidad and Tobago,country,TRINIDAD AND TOBAGO
+W6,Tunisia,country,TUNISIA
+W8,Turkey,country,TURKEY
+2E,Turkmenistan,country,TURKMENISTAN
+W7,Turks and Caicos Islands,country,TURKS AND CAICOS ISLANDS
+2G,Tuvalu,country,TUVALU
+W9,Uganda,country,UGANDA
+2H,Ukraine,country,UKRAINE
+C0,United Arab Emirates,country,UNITED ARAB EMIRATES
+X0,United Kingdom,country,UNITED KINGDOM
+2J,United States Minor Outlying Islands,country,UNITED STATES MINOR OUTLYING ISLANDS
+X3,Uruguay,country,URUGUAY
+2K,Uzbekistan,country,UZBEKISTAN
+2L,Vanuatu,country,VANUATU
+X5,Venezuela,country,VENEZUELA
+Q1,Viet Nam,country,VIET NAM
+D8,"Virgin Islands, British",country,"VIRGIN ISLANDS, BRITISH"
+VI,"Virgin Islands, U.S.",country,"VIRGIN ISLANDS, U.S."
+X8,Wallis and Futuna,country,WALLIS AND FUTUNA
+U5,Western Sahara,country,WESTERN SAHARA
+T7,Yemen,country,YEMEN
+Y4,Zambia,country,ZAMBIA
+Y5,Zimbabwe,country,ZIMBABWE
+XX,Unknown,country,UNKNOWN

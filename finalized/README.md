@@ -11,6 +11,28 @@ into clean entity and share-class tables.
 | 3 | extract | `extract --run` | `xbrl_facts` |
 | 3 fine-tune | field selection | `extract --facts <group>` | fewer, chosen facts |
 | 3.5 | cover | `cover --build` | `entity_cover`, `security_cover` |
+| 4 | headers | `headers --run` | `header_cover` |
+| 4 | covertext | `covertext --run` | `cover_office` |
+| 4 | resolve | `resolve --build` | `entity_resolved`, `entity_final`, `security_final` |
+
+**Full run, in order.** Each stage reads only what the previous one wrote, so
+you can stop anywhere and resume:
+
+```bash
+python -m finalized.cli bootstrap --start 2026-01-01 --end 2026-06-30
+python -m finalized.cli extract --queue
+python -m finalized.cli extract --run --facts cover     # level 3
+python -m finalized.cli cover --build                   # level 3.5
+python -m finalized.cli headers --run --limit 500       # level 4, cheap
+python -m finalized.cli resolve --build                 # level 4, no network
+python -m finalized.cli covertext --run --candidates    # level 4, expensive
+python -m finalized.cli resolve --final                 # fold covers back in
+python -m finalized.cli status
+```
+
+Only three stages touch the network: `bootstrap`/`sync`, `extract`, `headers`
+and `covertext`. `cover --build` and `resolve` are pure database work and are
+cheap to re-run whenever the logic changes.
 
 **Scope.** This package stops at structured data. The local-LLM analysis layer,
 the Flask viewer, country assignment and free-text HTML extraction all live in
@@ -382,7 +404,293 @@ Current shape of the built tables:
   multi-class companies: 1,351  (18% report more than one share class)
 ```
 
-### 4. Backups
+### 4. Trusted current values
+
+Level 3.5 gives a clean row per company **per filing**. Research needs the other
+shape: for CIK X, what is the headquarters *now*, the incorporation *now*, and
+how much should I trust each?
+
+```bash
+python -m finalized.cli resolve --build        # database only, no network
+python -m finalized.cli resolve --summary
+python -m finalized.cli resolve --conflicts    # the review queue
+```
+
+```sql
+SELECT field, value, as_of, source, status
+FROM entity_resolved WHERE cik = '86312';
+```
+
+#### Where the value comes from
+
+| rank | source | what it is | coverage |
+|---|---|---|---|
+| 1 | XBRL cover of the latest filing of **any** in-scope form | the registrant's own statement in that filing | 8-K carries a city 99.7% of the time |
+| 2 | `header_cover` (SGML) | EDGAR's **registered profile** for the filer | every filing, XBRL or not |
+
+The important discovery: an **8-K cover carries the address and incorporation
+code at 99.7%** while carrying **zero** share classes. That is why `cover --build`
+excludes 8-K but `resolve` includes it — 8-Ks are filed constantly, so they are
+the freshest statement a company makes about where it is, and the facts are
+already in `xbrl_facts` at no network cost.
+
+**XBRL always wins where it exists, regardless of which filing is newer.** The
+header is a registered profile that filers update lazily, and it is often stale
+even when its filing is more recent. Travelers is the proof — both sources dated
+the same day:
+
+```
+cik 86312  TRAVELERS COMPANIES, INC.   address_city
+   xbrl_cover   New York     8-K 2026-07-24   <- trusted
+   sgml_header  SAINT PAUL       2026-07-24
+```
+
+So the header's real value is reaching companies XBRL cannot (**331 companies**
+here) and casting a second vote — never overriding a company's own statement.
+
+#### Disagreement is graded, not counted
+
+Naive string comparison called 43 of 236 cross-checked fields "conflicts" when
+most were spelling. `status` grades them:
+
+| status | meaning | example |
+|---|---|---|
+| `agreed` | identical | — |
+| `cosmetic` | case, punctuation, spacing or street abbreviation | `700 Universe Boulevard` / `700 UNIVERSE BLVD` |
+| `contained` | one is a more precise form of the other | `Boadilla del Monte (Madrid)` / `MADRID`; `Z4` / `A1` |
+| `conflict` | genuinely different — **review this** | IHG `X0` vs `DE` |
+| `xbrl_only` / `header_only` | only one source had it | — |
+
+Two normalisation rules earn their keep. Street lines expand abbreviations
+(`Blvd`→`Boulevard`, `S.`→`South`), which moved 8 false conflicts out of the
+queue. That expansion is **not** applied to city names, because in a city `St`
+means Saint (`St. George`), not Street. And Canadian issuers tag either the
+province (`A1`, British Columbia) or the federal code (`Z4`, Canada) for the same
+company, so that pair is `contained` rather than a conflict.
+
+This module does **not** decide a country — EDGAR codes are not ISO and
+resolving them properly is a later level's job with the full code tables. It
+only needs to know when two codes are compatible enough not to raise an alarm.
+
+#### Shares are not resolved here
+
+An 8-K cover reports no share counts at all (0% of 13,497 measured), so there is
+no competing XBRL opinion to reconcile: `security_cover` already holds the latest
+per-class counts, each with its own `shares_as_of`.
+
+```sql
+SELECT security_class, trading_symbol, shares_outstanding, shares_as_of
+FROM security_cover WHERE cik = ? AND security_type = 'equity';
+```
+
+`shares_as_of` is the instant the count was measured, **not** the filing date,
+and the gap is large enough to matter:
+
+| form | avg lag as-of → filed | worst |
+|---|---:|---:|
+| 20-F/A | 161 days | 399 |
+| 20-F | 104 days | 700 |
+| 40-F | 69 days | 121 |
+| 10-K | 13 days | 719 |
+| 10-Q | 6 days | 903 |
+
+Resolve "latest shares" on `shares_as_of`. Using `filing_date` misdates every
+foreign private issuer by a full quarter.
+
+#### The finalized answer: full names, never codes
+
+`entity_final` is the wide, decoded conclusion — one row per company, with
+incorporation and principal executive office as **full names**, each carrying an
+as-of date, a source and a confidence.
+
+```sql
+SELECT incorporation_state, incorporation_country,
+       hq_city, hq_state, hq_country,
+       incorporation_conf, hq_conf, hq_conf_why
+FROM entity_final WHERE cik = ?;
+```
+
+**Why full names and not codes.** EDGAR codes are not ISO, and worse, the cover
+page uses *both systems in adjacent fields*:
+
+| field | system | `CA` | `DE` |
+|---|---|---|---|
+| `EntityAddressStateOrProvince` | EDGAR | California | Delaware |
+| `EntityAddressCountry` | **ISO 3166-1** | **Canada** | **Germany** |
+
+Verified in this mirror: every filing tagging `EntityAddressCountry='CA'` is
+Canadian (IMAX in Mississauga, Waste Connections in Woodbridge), and every `DE`
+is European (SmartKem, Veraxa Biotech AG). Decoding the country field with the
+EDGAR table would place IMAX in the United States — silently, with no error. So
+[`jurisdiction.py`](jurisdiction.py) keeps two separate decoders with two
+separate tables, and downstream reads names.
+
+24 EDGAR codes collide with ISO this way. `CA` alone appears as an incorporation
+code 60 times here — every one California.
+
+**The state field is not one code system either.** `NL` appears with three
+meanings in this data:
+
+| company | `NL` means | resolved via |
+|---|---|---|
+| FORTIS (St. John's) | Newfoundland and Labrador | Canadian incorporation |
+| FEMSA (Monterrey) | Nuevo León, **Mexico** | `EntityAddressCountry='MX'` |
+| LAVA Therapeutics (Utrecht) | the **Netherlands** | `EntityAddressCountry='NL'` |
+
+So a sub-national code is resolved only inside a country established
+independently. Eight Canada Post abbreviations (`AB BC MB NB NS NT ON QC`)
+collide with nothing and resolve alone — but are flagged **uncorroborated**, and
+capped at medium confidence, because AEN Group tags `AB` with its office in
+Zaoyang, China. Five (`NL NU PE SK YT`) collide with Netherlands, Niue, Peru,
+Slovakia and Mayotte, and always require context.
+
+#### Confidence
+
+Every finalized value carries a level and the reason for it, so a reviewer sees
+*why* rather than a bare score.
+
+| level | when |
+|---|---|
+| `high` | two independent sources agree, or agree at different grain |
+| `medium` | single source (the registrant's own XBRL cover); or stale; or an uncorroborated postal inference |
+| `low` | sources conflict; the code is not in the table; or no value at all |
+
+Ordered most-damaging first: a conflict outranks staleness, because a value two
+sources disagree about is worse than an old value they agree on. An undecodable
+code can never be `high`.
+
+Most rows currently sit at `medium` — that is honest, not a defect: only 40
+headers have been read, so almost nothing has a second source yet. A wider
+`headers --run` moves corroborated values to `high`.
+
+#### Shares
+
+`security_final` is one row per company per share class — equity only, because
+an ADS represents shares already counted on the ordinary line and summing both
+double-counts the company.
+
+```sql
+SELECT security_class, trading_symbol, is_listed,
+       shares_outstanding, shares_as_of, shares_conf
+FROM security_final WHERE cik = ?;
+```
+
+Share confidence turns on attribution and currency, not transcription — the
+number is never parsed from prose. A company whose cover carries a listing row
+that could not be matched to a class has **every** class marked `low`, because
+which class the ticker belongs to is unresolved for that filer (76 companies).
+
+One correctness fix worth knowing: some filers tag a single class **twice**,
+once dimensioned and once not. 3M reported `us-gaap:CommonStockMember` and a
+plain `CommonStock` line both at 515,722,417 — summing its equity gave 1.03
+billion, exactly double. `drop_duplicate_undimensioned` removes the
+un-dimensioned twin only when the ticker *and* the count both match. Classes
+that merely share a count survive: SQM's Series A/B, Petco's Class B-1/B-2 and
+Goldman Sachs's Class S/D/T funds all report identical numbers on genuinely
+distinct members.
+
+#### The second principal executive office
+
+XBRL tags exactly one address, so a company with two head offices is
+indistinguishable in the structured data from one with a single office. The
+second office exists only on the **printed cover page**.
+
+```bash
+python -m finalized.cli covertext --run --cik 24545        # one company
+python -m finalized.cli covertext --run --candidates       # the flagged list
+python -m finalized.cli covertext --summary
+python -m finalized.cli resolve --final                    # fold results in
+```
+
+This fetches a **full document** per filing — orders of magnitude dearer than
+the header read — so it refuses to run unscoped. Use `--cik` or `--candidates`.
+
+**Why line-counting does not work.** The obvious rule ("more than one line
+before *(Address of principal executive offices)*") fails on the commonest
+layout. Apple prints:
+
+```
+One Apple Park Way
+Cupertino, California          ← one address, two lines
+```
+
+Molson Coors prints:
+
+```
+P.O. Box 4030, BC555, Golden, Colorado, USA
+111 Boulevard Robert-Bourassa, 9th Floor, Montréal, Québec, Canada
+```
+
+Two complete addresses. Counting lines cannot separate them.
+
+What does separate them is the fields the SEC form makes **singular** — one
+`(Zip Code)`, one telephone number. A filer with two offices is forced to double
+them up. Four signals, any one sufficient:
+
+| signal | example |
+|---|---|
+| explicit office labels | UEC: `(U.S. corporate headquarters)` + `(Canadian corporate headquarters)` |
+| multiple `(Zip Code)` fields | UEC prints two |
+| multiple postcodes | Molson Coors: `80401`, `H3C 2M1` |
+| multiple labelled phones | Molson Coors: `(Colorado)`, `(Québec)` |
+
+Confirmed results land in `entity_final.hq_dual_confirmed` with the other
+address in `hq_second_office`:
+
+```sql
+SELECT entity_name, hq_city, hq_country, hq_second_office, hq_dual_reason
+FROM entity_final WHERE hq_dual_confirmed = 1;
+```
+
+A cover read also **settles** a candidate in the negative — Travelers was
+flagged by the stale-header disagreement and the cover confirmed one office.
+
+**Two limits, stated plainly.** Combined annual reports (NatWest, IHG file the
+UK annual report and the 20-F as one document) repeat "principal executive
+offices" deep in the body — at character 177,611 for NatWest — where the
+preceding text is prose, not an address. The search is bounded to the cover
+region, so those **decline** rather than return nonsense. And some covers use a
+layout the marker never matches; those are reported as `no cover marker`, not
+silently skipped.
+
+#### What is deliberately NOT built: non-XBRL share counts
+
+Share counts for filings without XBRL would need text extraction. Measured
+before building it: of 1,638 non-XBRL filings in the share-relevant forms
+(10-K, 10-Q, 20-F, 40-F, 8-K, 6-K), **80% are structured-finance shells** — ABS
+trusts, receivables and owner trusts with no share classes at all. The remaining
+334 are overwhelmingly closed-end funds (Nuveen, Pioneer, PIMCO) and LPs, and 98
+of those are CIKs already covered by an XBRL filing elsewhere.
+
+That leaves ~236 filings, nearly all funds. A fuzzy parser for that population
+would add risk to a table whose entire value is that its numbers are right, so
+it is not built. If the need appears later, `covertext.to_text` and
+`primary_document` are the reusable half.
+
+#### Test suite
+
+```bash
+python -m finalized.tests_jurisdiction                 # offline logic
+python -m finalized.tests_jurisdiction --db PATH       # + real-data checks
+```
+
+283 assertions across ten groups, every case drawn from something that actually
+went wrong: ISO/EDGAR collisions, sub-national grain, offshore incorporation,
+unknown codes, confidence ordering, cover-page layouts, and live-data
+invariants. The cover-page group runs on stored fixtures, so the whole suite
+works offline; `--db` adds the real-data checks.
+
+Two traps the suite itself had to learn:
+
+- **`<>` is NULL-blind in SQL.** `hq_state <> 'Ontario'` is NULL when the value
+  is NULL, so the row is not counted — an earlier version passed while 19 `ON`
+  rows sat unresolved. Any assertion whose point is to catch a *missing* value
+  must use `IS NOT`.
+- **A stale expectation is not a failure.** When the ISO table landed, FEMSA and
+  LAVA started resolving to Mexico and the Netherlands. The tests said `None`;
+  the code was right and the tests were out of date.
+
+### 5. Backups
 
 ```bash
 python -m finalized.cli backup                    # snapshot, then verify it
@@ -444,7 +752,16 @@ policy and record shape live in exactly one place.
 | `xbrl_facts` | reported fact | `id`, indexed on `(accession_number, cik)` |
 | `entity_cover` | company-filing | `(accession_number, cik)` |
 | `security_cover` | security line | `(accession_number, cik, security_key)` |
+| `header_cover` | company-filing, from SGML | `(accession_number, cik)` |
+| `cover_office` | company-filing, from the printed page | `(accession_number, cik)` |
+| `entity_resolved` | company **field** | `(cik, field)` |
+| `entity_final` | company | `cik` |
+| `security_final` | company share class | `(cik, security_key)` |
 | `fact_groups` | custom field group | `group_name` |
+
+`entity_resolved` is long, not wide — one row per `(cik, field)` — so each value
+carries its own source, as-of date and agreement status. That is what a review
+UI needs in order to show *why* a value is what it is.
 
 **Why the composite key.** The daily index lists a filing once per associated
 CIK — a Form 4 appears under both the issuer and the reporting owner. Accession
@@ -617,6 +934,12 @@ WHERE accession_number = ? AND cik = ?
 | [`extract.py`](extract.py) | level 3 — candidate selection, the queue, XBRL enrichment + fact extraction |
 | [`profiles.py`](profiles.py) | level 3 fine tuning — field groups, `resolve_fields`, coverage |
 | [`cover.py`](cover.py) | level 3.5 — `entity_cover` + `security_cover`, security typing, share-class merge |
+| [`sgml.py`](sgml.py) | level 4 — HQ + incorporation from any filing's SGML header, matched per CIK |
+| [`covertext.py`](covertext.py) | level 4 — the printed cover page; the second principal executive office |
+| [`resolve.py`](resolve.py) | level 4 — `entity_resolved` / `entity_final` / `security_final`: trusted values, decoded, with confidence |
+| [`jurisdiction.py`](jurisdiction.py) | EDGAR **and** ISO code decoding, kept in separate tables on purpose |
+| [`tests_jurisdiction.py`](tests_jurisdiction.py) | the Level 4 edge-case suite (259 assertions) |
+| [`data/`](data/) | the mappings, as CSV: EDGAR codes, ISO codes, collisions, aliases, postal abbreviations |
 | [`xbrl.py`](xbrl.py) | XBRL instance → tidy facts; `entity_facts()` / `security_facts()` |
 | [`backup.py`](backup.py) | WAL-safe online snapshots, verify, restore, prune |
 | [`cli.py`](cli.py) | one entry point: `bootstrap`, `sync`, `enrich`, `facts`, `extract`, `cover`, `status`, `backup` |

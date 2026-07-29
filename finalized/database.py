@@ -285,6 +285,9 @@ class FilingDB:
         # add a column to one that already exists — so the column is registered
         # here too, exactly the trap this mechanism exists for.
         "security_cover": {"shares_as_of": "TEXT"},
+        # resolve.py owns entity_final; same CREATE-IF-NOT-EXISTS trap.
+        "entity_final": {"hq_dual_confirmed": "INTEGER NOT NULL DEFAULT 0",
+                         "hq_second_office": "TEXT"},
     }
 
     def _migrate(self) -> None:

@@ -1,0 +1,14 @@
+code,name,country,needs_country_context,note
+AB,Alberta,Canada,0,unique to Canada Post
+BC,British Columbia,Canada,0,unique to Canada Post
+MB,Manitoba,Canada,0,unique to Canada Post
+NB,New Brunswick,Canada,0,unique to Canada Post
+NL,Newfoundland and Labrador,Canada,1,"ISO NL = Netherlands; also Nuevo Leon (Mexico)"
+NS,Nova Scotia,Canada,0,unique to Canada Post
+NT,Northwest Territories,Canada,0,unique to Canada Post
+NU,Nunavut,Canada,1,ISO NU = Niue
+ON,Ontario,Canada,0,unique to Canada Post
+PE,Prince Edward Island,Canada,1,ISO PE = Peru
+QC,Quebec,Canada,0,unique to Canada Post
+SK,Saskatchewan,Canada,1,ISO SK = Slovakia
+YT,Yukon,Canada,1,ISO YT = Mayotte

@@ -17,6 +17,7 @@ Commands
     facts       list / inspect the field groups that --facts accepts
     extract     queue filings and pull their XBRL facts        (level 3)
     cover       build entity_cover + security_cover from facts (level 3.5)
+    headers     read HQ + incorporation from SGML headers      (level 4)
     status      read-only view of ingest + extraction state
     backup      snapshot / list / verify / restore / prune the database
 
@@ -38,6 +39,10 @@ from .extract import extract_xbrl, queue_candidates
 from .ingest import bootstrap, enrich_backfill, run_incremental
 from .profiles import (ALL, all_groups, coverage, define_group, delete_group,
                        resolve_fields)
+from .resolve import (build_final, build_resolved, build_security_final,
+                      conflicts, resolved_summary)
+from .covertext import covertext_summary, extract_cover_offices
+from .sgml import extract_headers, header_summary
 
 
 # ── shared option plumbing (declared once, inherited by every subcommand) ─────
@@ -188,6 +193,122 @@ def cmd_cover(a) -> int:
     return 0
 
 
+def cmd_headers(a) -> int:
+    """Level 4 source A — HQ + incorporation from the SGML header."""
+    if a.summary:
+        s = header_summary(a.db)
+        if not s["built"]:
+            print("no headers read yet — run: cli headers --run --limit 200")
+            return 1
+        print(f"  header_cover      {s['rows']:,} rows, {s['ciks']:,} companies")
+        print(f"  with incorporation{s['with_incorporation']:>8,}  "
+              f"(absent is normal — many 6-K/S-3 omit it)")
+        print(f"  with a city       {s['with_city']:>8,}")
+        print(f"  mail-address only {s['mail_only']:>8,}")
+        return 0
+
+    if not a.run:
+        print("pass --run to read headers, or --summary to see what exists",
+              file=sys.stderr)
+        return 2
+
+    r = extract_headers(a.db, cik=a.cik, limit=a.limit, delay=a.delay,
+                        only_missing=not a.refresh)
+    print("\n--- header read complete --------------------------------------")
+    print(f"  stored            {r['stored']:,}")
+    print(f"  no block for cik  {r['missing']:,}")
+    print(f"  failed            {r['failed']:,}")
+    print("---------------------------------------------------------------")
+    return 0
+
+
+def cmd_covertext(a) -> int:
+    """Level 4 source C — read the printed cover for a second office."""
+    if a.summary:
+        s = covertext_summary(a.db)
+        if not s["built"]:
+            print("no cover pages read yet — "
+                  "run: cli covertext --run --candidates")
+            return 1
+        print(f"  cover_office      {s['rows']:,} rows, {s['ciks']:,} companies")
+        print(f"  dual offices      {s['dual']:,}")
+        return 0
+
+    if not a.run:
+        print("pass --run (with --cik or --candidates), or --summary",
+              file=sys.stderr)
+        return 2
+    if not (a.cik or a.candidates):
+        print("this fetches a FULL document per filing — scope it with "
+              "--cik or --candidates", file=sys.stderr)
+        return 2
+
+    r = extract_cover_offices(a.db, cik=a.cik, candidates=a.candidates,
+                              limit=a.limit, delay=a.delay, refresh=a.refresh)
+    print("\n--- cover pages read ------------------------------------------")
+    print(f"  stored            {r['stored']:,}")
+    print(f"  dual offices      {r['dual']:,}")
+    print(f"  no cover marker   {r['skipped']:,}")
+    print(f"  failed            {r['failed']:,}")
+    print("---------------------------------------------------------------")
+    print("Re-run `resolve --final` to fold these into entity_final.")
+    return 0
+
+
+def cmd_resolve(a) -> int:
+    """Level 4 — one trusted current value per company per field."""
+    if a.conflicts:
+        rows = conflicts(a.db, limit=a.limit or 50)
+        if not rows:
+            print("no conflicts (or nothing resolved yet)")
+            return 0
+        print(f"{len(rows)} field(s) where the sources genuinely disagree\n")
+        for r in rows:
+            print(f"  cik {r['cik']:<9} {str(r['name'] or '')[:30]:<32} "
+                  f"{r['field']}")
+            print(f"     {r['source']:<12} {str(r['value'])[:30]:<32} "
+                  f"{r['source_form']} {r['as_of']}   <- trusted")
+            print(f"     {r['alt_source']:<12} {str(r['alt_value'])[:30]:<32} "
+                  f"{r['alt_as_of'] or ''}")
+        return 0
+
+    if a.summary:
+        s = resolved_summary(a.db)
+        if not s["built"]:
+            print("nothing resolved yet — run: cli resolve --build")
+            return 1
+        print(f"  entity_resolved   {s['rows']:,} fields, "
+              f"{s['companies']:,} companies")
+        for st, n in sorted(s["by_status"].items(), key=lambda kv: -kv[1]):
+            print(f"      {st:<12} {n:,}")
+        return 0
+
+    if not (a.build or a.final):
+        print("pass --build, --final, --summary or --conflicts",
+              file=sys.stderr)
+        return 2
+
+    # --final implies --build unless the caller asked for only one: the
+    # decoded table is derived from the evidence table, so a stale evidence
+    # table would silently produce a stale conclusion.
+    if a.build:
+        build_resolved(a.db, cik=a.cik)
+    if a.final or a.build:
+        print()
+        build_final(a.db)
+        print()
+        build_security_final(a.db)
+        print("\nFinalized, decoded, with confidence:")
+        print("  SELECT incorporation_state, incorporation_country,")
+        print("         hq_city, hq_state, hq_country,")
+        print("         incorporation_conf, hq_conf")
+        print("    FROM entity_final WHERE cik = ?;")
+        print("  SELECT security_class, trading_symbol, shares_outstanding,")
+        print("         shares_as_of, shares_conf")
+        print("    FROM security_final WHERE cik = ?;")
+    return 0
+
+
 def cmd_extract(a) -> int:
     if not (a.queue or a.run):
         a.queue = a.run = True          # the common case: queue then work it
@@ -261,6 +382,24 @@ def cmd_status(a) -> int:
         print(f"  security_cover    {cs['securities']:,}")
         print(f"  equity rows       {cs['by_type'].get('equity', 0):,} "
               f"({cs['multi_class_companies']:,} multi-class companies)")
+
+    hs = header_summary(a.db)
+    rs = resolved_summary(a.db)
+    cts = covertext_summary(a.db)
+    if hs["built"] or rs["built"] or cts["built"]:
+        print("\n── trusted values (level 4) ─────────────────────────────")
+        if hs["built"]:
+            print(f"  header_cover      {hs['rows']:,} rows "
+                  f"({hs['with_incorporation']:,} with incorporation)")
+        if cts["built"]:
+            print(f"  cover_office      {cts['rows']:,} pages read, "
+                  f"{cts['dual']:,} with two offices")
+        if rs["built"]:
+            print(f"  entity_resolved   {rs['rows']:,} fields, "
+                  f"{rs['companies']:,} companies")
+            n_conf = rs["by_status"].get("conflict", 0)
+            print(f"  needs review      {n_conf:,} conflict(s)"
+                  + ("  -> cli resolve --conflicts" if n_conf else ""))
 
     if failed:
         print(f"\n── failed index dates ({len(failed)}) ───────────────────")
@@ -391,6 +530,48 @@ def build_parser() -> argparse.ArgumentParser:
     cv.add_argument("--cik", default=None, help="Build one company only.")
     cv.add_argument("--limit", type=int, default=None)
     cv.set_defaults(func=cmd_cover)
+
+    hd = sub.add_parser("headers", parents=[common],
+                        help="Level 4: HQ + incorporation from SGML headers.")
+    hd.add_argument("--run", action="store_true",
+                    help="Read headers (one small range request per filing).")
+    hd.add_argument("--summary", action="store_true",
+                    help="Show what has been read.")
+    hd.add_argument("--cik", default=None, help="One company only.")
+    hd.add_argument("--limit", type=int, default=None,
+                    help="Stop after N filings. Always scope a first run.")
+    hd.add_argument("--refresh", action="store_true",
+                    help="Re-read filings whose header is already stored.")
+    hd.set_defaults(func=cmd_headers)
+
+    ct = sub.add_parser("covertext", parents=[common],
+                        help="Level 4: read the printed cover for a second "
+                             "principal executive office.")
+    ct.add_argument("--run", action="store_true",
+                    help="Read cover pages (a FULL document fetch each).")
+    ct.add_argument("--summary", action="store_true")
+    ct.add_argument("--cik", default=None, help="One company only.")
+    ct.add_argument("--candidates", action="store_true",
+                    help="Work the dual-HQ candidate list from entity_final.")
+    ct.add_argument("--limit", type=int, default=None)
+    ct.add_argument("--refresh", action="store_true",
+                    help="Re-read filings already stored.")
+    ct.set_defaults(func=cmd_covertext)
+
+    rs = sub.add_parser("resolve", parents=[common],
+                        help="Level 4: trusted current value per company/field.")
+    rs.add_argument("--build", action="store_true",
+                    help="Rebuild entity_resolved, then entity_final "
+                         "(database only, no network).")
+    rs.add_argument("--final", action="store_true",
+                    help="Rebuild only entity_final: decoded full names + "
+                         "confidence, from existing evidence.")
+    rs.add_argument("--summary", action="store_true")
+    rs.add_argument("--conflicts", action="store_true",
+                    help="List fields where the two sources disagree.")
+    rs.add_argument("--cik", default=None, help="One company only.")
+    rs.add_argument("--limit", type=int, default=None)
+    rs.set_defaults(func=cmd_resolve)
 
     st = sub.add_parser("status", parents=[common], help="Read-only audit view.")
     st.add_argument("--runs", type=int, default=8)

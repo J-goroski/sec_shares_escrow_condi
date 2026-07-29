@@ -16,6 +16,16 @@ A self-contained package covering the pieces that have proven out:
                     concepts a run stores ('all', 'cover', 'headquarters'...).
     cover.py        level 3.5 — entity_cover + security_cover: one clean row
                     per company and one per share class, listed or not.
+    sgml.py         level 4 — HQ + state of incorporation read from any
+                    filing's SGML header, XBRL or not; the cross-check and
+                    gap-filler for cover.py.
+    resolve.py      level 4 — one trusted current value per company per field,
+                    with its as-of date, its source, and a graded verdict on
+                    whether the sources agreed.
+    covertext.py    level 4 — reads the PRINTED cover page for the one thing
+                    XBRL never states: a second principal executive office.
+    jurisdiction.py decodes EDGAR codes and ISO codes, which are different
+                    tables that share letters (CA = California vs Canada).
     xbrl.py         XBRL instance parsing -> tidy facts, cover pages.
     backup.py       online (WAL-safe) database snapshots.
     cli.py          one command-line entry point for all of the above.
@@ -84,6 +94,46 @@ from .cover import (
     rehydrate,
     PERIODIC_FORMS,
 )
+from .sgml import (
+    HeaderFacts,
+    LEVEL4_BASE_FORMS,
+    extract_headers,
+    header_summary,
+    level4_where,
+    parse_header,
+)
+from .covertext import (
+    COVER_FORMS,
+    CoverPage,
+    covertext_summary,
+    extract_cover_offices,
+    parse_cover,
+    to_text,
+)
+from .jurisdiction import (
+    CANADA,
+    UNITED_STATES,
+    Jurisdiction,
+    Office,
+    country_from_iso,
+    country_from_text,
+    country_of,
+    decode,
+    resolve_office,
+    same_country,
+    state_of,
+)
+from .resolve import (
+    build_final,
+    build_resolved,
+    build_security_final,
+    compare,
+    conflicts,
+    grade,
+    grade_shares,
+    normalise,
+    resolved_summary,
+)
 from .backup import backup_database, list_backups, restore_backup, verify_backup
 from . import daily_index, xbrl
 
@@ -103,6 +153,19 @@ __all__ = [
     # cover structuring (level 3.5)
     "build_cover_tables", "cover_summary", "merge_listing_rows",
     "refine_security_type", "rehydrate", "PERIODIC_FORMS",
+    # SGML header facts + trusted-value resolution (level 4)
+    "HeaderFacts", "LEVEL4_BASE_FORMS", "extract_headers", "header_summary",
+    "level4_where", "parse_header",
+    "build_resolved", "compare", "conflicts", "normalise", "resolved_summary",
+    # finalized, decoded values + confidence (level 4)
+    "build_final", "build_security_final", "grade", "grade_shares",
+    # printed cover page: the second principal executive office (level 4)
+    "COVER_FORMS", "CoverPage", "covertext_summary", "extract_cover_offices",
+    "parse_cover", "to_text",
+    # jurisdiction decoding -- EDGAR codes and ISO codes are NOT the same table
+    "CANADA", "UNITED_STATES", "Jurisdiction", "Office", "country_from_iso",
+    "country_from_text", "country_of", "decode", "resolve_office",
+    "same_country", "state_of",
     # backups
     "backup_database", "list_backups", "restore_backup", "verify_backup",
     # submodules
